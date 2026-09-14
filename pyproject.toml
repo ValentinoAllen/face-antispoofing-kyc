@@ -1,0 +1,92 @@
+[project]
+name = "antispoof"
+version = "0.1.0"
+description = "Face anti-spoofing (presentation attack detection) for KYC selfie liveness verification, trained on CelebA-Spoof."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "Valentino Allen Prasetyo" }]
+dependencies = [
+    "torch",
+    "torchvision",
+    "timm",
+    "albumentations",
+    "opencv-python-headless",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "matplotlib",
+    "pyyaml",
+    "tqdm",
+    "wandb",
+    "onnx",
+    "onnxruntime",
+    "fastapi",
+    "uvicorn",
+    "pillow",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "antispoof"
+module-root = "src"
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "N",   # pep8-naming
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["N802"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests that need real data or take more than a few seconds (deselect with -m 'not slow')",
+]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+packages = ["antispoof"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["cv2.*", "albumentations.*", "timm.*", "torchvision.*", "onnxruntime.*", "sklearn.*"]
+ignore_missing_imports = true

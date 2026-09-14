@@ -1,0 +1,43 @@
+# --- Data (never committed) ---
+# Anchored to the repo root so it doesn't also ignore src/antispoof/data/.
+/data/
+
+# --- Experiment tracking & model artifacts ---
+wandb/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# --- Python / tooling ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Local credentials & secrets ---
+.env
+.env.*
+*.pem
+*.key
+kaggle.json
+.kaggle/
+.netrc
+credentials*.json
+secrets*.yaml
+secrets*.yml
+
+# --- Local editor / OS / assistant settings ---
+.DS_Store
+.idea/
+.vscode/
+.claude/settings.local.json

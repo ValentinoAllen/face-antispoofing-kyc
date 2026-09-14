@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+MSG_FILE="$1"
+perl -ni -e 'print unless /^Co-Authored-By:\s*Claude/i || /Generated with \[Claude Code\]/i || /^Claude-Session:/i' "$MSG_FILE"
