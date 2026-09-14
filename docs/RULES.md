@@ -113,7 +113,13 @@ assistant's defaults.
    - Prepend a session-log entry that records only what actually happened.
    - Add completed runs to `docs/EXPERIMENTS.md`.
    - Use `/session-end` for this.
-5. **Do not push or add remotes.** The repository owner does that.
+5. **Pushing and remotes.**
+   - Never add remotes.
+   - The only push an assistant may run is the plain `git push` in the final step of
+     `/session-end`, after its commit. Never use `--force`, `--force-with-lease` or any other flag.
+   - If that push fails for any reason, report the actual error and state plainly that the commit
+     is local only. Never report a push as successful unless `git push` returned success.
+   - Any other push is done by the repository owner.
 6. **Ask when a decision belongs to the owner** (targets, scope, dataset handling, public-facing
    wording) instead of guessing.
 7. **Figures measured outside this repository.**

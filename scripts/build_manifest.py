@@ -4,7 +4,7 @@ Run on Kaggle from the repository root, with the ``antispoof`` package importabl
 
     python scripts/build_manifest.py --config configs/data.yaml --output-dir data/manifests
 
-The printed counts are compared against the externally measured figures in docs/SCHEMA.md §1.
+The printed counts are compared against the figures recorded in docs/SCHEMA.md §1.
 """
 
 import argparse

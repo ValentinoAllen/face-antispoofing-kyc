@@ -12,13 +12,17 @@ from antispoof.data.config import DataConfig, load_data_config
 REPO_DATA_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "data.yaml"
 
 SYNTHETIC_SPOOF_TYPE = 1
+SYNTHETIC_ILLUMINATION = 1
+SYNTHETIC_ENVIRONMENT = 1
 
 
-def _vector(label: int, spoof_type: int = 0, attr_41: int = 0, attr_42: int = 0) -> list[int]:
+def _vector(
+    label: int, spoof_type: int = 0, illumination: int = 0, environment: int = 0
+) -> list[int]:
     vector = [0] * labels.VECTOR_LENGTH
     vector[labels.INDEX_SPOOF_TYPE] = spoof_type
-    vector[labels.INDEX_ATTR_41] = attr_41
-    vector[labels.INDEX_ATTR_42] = attr_42
+    vector[labels.INDEX_ILLUMINATION] = illumination
+    vector[labels.INDEX_ENVIRONMENT] = environment
     vector[labels.INDEX_LABEL] = label
     return vector
 
@@ -36,7 +40,12 @@ def _labels(source_split: str, subjects: Mapping[str, tuple[int, int]]) -> dict[
             label_vectors[path] = _vector(labels.LABEL_LIVE)
         for index in range(n_live, n_live + n_spoof):
             path = _image_path(source_split, subject_id, labels.PATH_KIND_SPOOF, index)
-            label_vectors[path] = _vector(labels.LABEL_SPOOF, spoof_type=SYNTHETIC_SPOOF_TYPE)
+            label_vectors[path] = _vector(
+                labels.LABEL_SPOOF,
+                spoof_type=SYNTHETIC_SPOOF_TYPE,
+                illumination=SYNTHETIC_ILLUMINATION,
+                environment=SYNTHETIC_ENVIRONMENT,
+            )
     return label_vectors
 
 

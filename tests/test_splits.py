@@ -2,14 +2,16 @@
 
 import dataclasses
 import json
+from itertools import combinations
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from antispoof.data import labels
-from antispoof.data.build import format_report, run
+from antispoof.data.build import CodeCounts, count_attack_codes, format_report, run
 from antispoof.data.config import CONFLICT_EXCLUDE, CONFLICT_TRUST_LABEL, CONFLICT_TRUST_PATH
-from antispoof.data.manifest import build_manifest
+from antispoof.data.manifest import ATTACK_CODE_COLUMNS, build_manifest
 from antispoof.data.splits import (
     ProtectedTestSplitError,
     SplitCoverageError,
@@ -21,6 +23,9 @@ from antispoof.data.splits import (
     validate_splits,
 )
 
+REPO_SPLIT_ASSIGNMENT = (
+    Path(__file__).resolve().parents[1] / "configs" / "splits" / "split_assignment.csv"
+)
 TRAIN, VAL, TEST = labels.SPLIT_TRAIN, labels.SPLIT_VAL, labels.SPLIT_TEST
 VAL_FRACTION = 0.1
 STRATIFY_BINS = 10
@@ -242,6 +247,51 @@ def test_build_excludes_leaking_subject_from_train_only(tmp_data_config, leaking
     assert leak not in set(trainval["subject_id"])
     assert len(trainval) == len(train_labels) - 2  # the leaking subject's two train images
     assert "Final splits" in format_report(report)
+
+
+def test_build_report_prints_attack_code_counts(tmp_data_config, leaking_dataset) -> None:
+    report = run(tmp_data_config)
+    # Train: 40 subjects with 3 spoof images plus the leak with 1. Test: 10 with 2, the leak with 2.
+    assert report.code_counts[TRAIN] == CodeCounts(121, {c: {1: 121} for c in ATTACK_CODE_COLUMNS})
+    assert report.code_counts[TEST] == CodeCounts(22, {c: {1: 22} for c in ATTACK_CODE_COLUMNS})
+    text = format_report(report)
+    assert "  train: spoof/ rows=121" in text
+    assert "    illumination: 1=121 (1 distinct)" in text
+
+
+def test_count_attack_codes_counts_spoof_rows_only(make_labels, make_vector, image_path) -> None:
+    label_vectors = make_labels(TRAIN, {"0001": (3, 0)})
+    for index, codes in enumerate([(1, 1, 1), (10, 4, 2), (10, 1, 2)]):
+        path = image_path(TRAIN, "0002", labels.PATH_KIND_SPOOF, index)
+        label_vectors[path] = make_vector(labels.LABEL_SPOOF, *codes)
+    manifest, _ = build_manifest(label_vectors, TRAIN, CONFLICT_EXCLUDE)
+    counts = count_attack_codes(manifest)
+    assert counts.spoof_rows == 3
+    assert counts.counts == {
+        "spoof_type": {1: 1, 10: 2},
+        "illumination": {1: 2, 4: 1},
+        "environment": {1: 1, 2: 2},
+    }
+
+
+# ---------------------------------------------------------------- committed split assignment
+
+
+def test_committed_split_assignment_is_disjoint_and_excludes_shared_subjects(
+    repo_data_config,
+) -> None:
+    assignment = load_split_assignment(REPO_SPLIT_ASSIGNMENT, repo_data_config.excluded_subjects)
+    subjects = {
+        name: set(assignment.loc[assignment["split"] == name, "subject_id"])
+        for name in labels.SPLITS
+    }
+    assert all(subjects[name] for name in labels.SPLITS)
+    for first, second in combinations(labels.SPLITS, 2):
+        assert not subjects[first] & subjects[second], (first, second)
+    excluded = set(repo_data_config.excluded_subjects)
+    assert excluded
+    assert not excluded & (subjects[TRAIN] | subjects[VAL])
+    assert excluded <= subjects[TEST]  # the shared subjects stay in the official test split
 
 
 def test_build_without_exclusion_fails_before_writing(tmp_data_config, leaking_dataset) -> None:

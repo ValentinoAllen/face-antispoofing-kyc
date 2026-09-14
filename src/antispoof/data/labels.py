@@ -5,9 +5,12 @@ Every entry in a CelebA-Spoof label file maps a relative image path of the form
 the only place in the codebase that spells out the vector layout or the path vocabulary; all other
 code imports the names defined here.
 
-Index 40 (spoof type) and index 43 (live/spoof label) are verified against the Kaggle mirror
-recorded in ``docs/SCHEMA.md`` §1. The meaning of indices 41 and 42 is provisional, so their names
-state only the index.
+Indices 40 (spoof type), 41 (illumination), 42 (environment) and 43 (live/spoof label) are verified
+against the Kaggle mirror recorded in ``docs/SCHEMA.md`` §1.
+
+The codes at indices 40–42 are **1-indexed** categories. ``CODE_NOT_APPLICABLE`` (0) is not a
+category: it means "not applicable" and belongs on live rows only. A raw code is never a zero-based
+class index; any class index must be derived from it explicitly.
 """
 
 from collections.abc import Sequence
@@ -19,15 +22,19 @@ FACE_ATTRIBUTES = slice(0, 40)
 """The 40 CelebA face attributes. Populated for live images only; all zero for spoof images."""
 
 INDEX_SPOOF_TYPE = 40
-"""Spoof type code (verified). Zero for live images."""
+"""Spoof type code (verified). 1-indexed; ``CODE_NOT_APPLICABLE`` on live images."""
 
-# TODO: provisionally the illumination condition, by documentation convention only. Confirm with
-# unique-value counts on the mirror before renaming. Zero for live images (measured).
-INDEX_ATTR_41 = 41
+INDEX_ILLUMINATION = 41
+"""Illumination condition code (verified). 1-indexed; ``CODE_NOT_APPLICABLE`` on live images."""
 
-# TODO: provisionally the environment, by documentation convention only. Confirm with unique-value
-# counts on the mirror before renaming. Zero for live images (measured).
-INDEX_ATTR_42 = 42
+INDEX_ENVIRONMENT = 42
+"""Environment code (verified). 1-indexed; ``CODE_NOT_APPLICABLE`` on live images."""
+
+ATTACK_CODE_INDICES = (INDEX_SPOOF_TYPE, INDEX_ILLUMINATION, INDEX_ENVIRONMENT)
+"""Indices whose codes describe an attack and are ``CODE_NOT_APPLICABLE`` on live images."""
+
+CODE_NOT_APPLICABLE = 0
+"""Value at ``ATTACK_CODE_INDICES`` on live images. Not a category; category codes start at 1."""
 
 INDEX_LABEL = 43
 """Live/spoof label (verified). This is the training target."""
@@ -105,37 +112,60 @@ def get_spoof_type(vector: Sequence[int]) -> int:
     return int(vector[INDEX_SPOOF_TYPE])
 
 
-def get_attr_41(vector: Sequence[int]) -> int:
-    """Read the raw code at index 41.
-
-    TODO: provisionally the illumination condition; confirm by unique-value counts before renaming.
+def get_illumination(vector: Sequence[int]) -> int:
+    """Read the illumination condition code (index 41). Zero for live images.
 
     Args:
         vector: One annotation vector from a label file.
 
     Returns:
-        The raw code at index 41.
+        The raw, 1-indexed illumination code, or ``CODE_NOT_APPLICABLE``.
 
     Raises:
         LabelVectorError: If the vector length is wrong.
     """
     validate_vector(vector)
-    return int(vector[INDEX_ATTR_41])
+    return int(vector[INDEX_ILLUMINATION])
 
 
-def get_attr_42(vector: Sequence[int]) -> int:
-    """Read the raw code at index 42.
-
-    TODO: provisionally the environment; confirm by unique-value counts before renaming.
+def get_environment(vector: Sequence[int]) -> int:
+    """Read the environment code (index 42). Zero for live images.
 
     Args:
         vector: One annotation vector from a label file.
 
     Returns:
-        The raw code at index 42.
+        The raw, 1-indexed environment code, or ``CODE_NOT_APPLICABLE``.
 
     Raises:
         LabelVectorError: If the vector length is wrong.
     """
     validate_vector(vector)
-    return int(vector[INDEX_ATTR_42])
+    return int(vector[INDEX_ENVIRONMENT])
+
+
+def validate_attack_codes(vector: Sequence[int]) -> None:
+    """Check the 1-indexed code convention at ``ATTACK_CODE_INDICES`` against the label.
+
+    A spoof vector (index 43) must carry a category code, never ``CODE_NOT_APPLICABLE``, at every
+    attack-code index. A live vector must carry ``CODE_NOT_APPLICABLE`` at all of them.
+
+    Args:
+        vector: One annotation vector from a label file.
+
+    Raises:
+        LabelVectorError: If the vector length or label is invalid, a spoof vector has
+            ``CODE_NOT_APPLICABLE`` at an attack-code index, or a live vector has anything else.
+            The message names the offending indices.
+    """
+    label = get_label(vector)
+    codes = {index: int(vector[index]) for index in ATTACK_CODE_INDICES}
+    if label == LABEL_SPOOF:
+        bad = sorted(index for index, code in codes.items() if code == CODE_NOT_APPLICABLE)
+        rule = f"spoof vector has not-applicable code {CODE_NOT_APPLICABLE}"
+    else:
+        bad = sorted(index for index, code in codes.items() if code != CODE_NOT_APPLICABLE)
+        rule = f"live vector must have code {CODE_NOT_APPLICABLE}"
+    if bad:
+        found = ", ".join(f"index {index} = {codes[index]}" for index in bad)
+        raise LabelVectorError(f"Attack code convention violated: {rule} ({found}).")

@@ -31,7 +31,7 @@ subjects. Checking the mirror found two defects: the official split is not subje
 subjects appear in both train and test), and 2,022 train images stored under `live/` carry a spoof
 label, a conflict left unresolved and excluded by default. The overlapping subjects are dropped from
 train only, so the test split stays comparable to published work. The counts were measured on
-Kaggle and are not yet reproduced in-repo; see [ADR-009](docs/ARCHITECTURE.md) and
+Kaggle and reproduced by the repository's manifest builder; see [ADR-009](docs/ARCHITECTURE.md) and
 [the data schema](docs/SCHEMA.md).
 
 ## Status

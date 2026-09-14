@@ -53,7 +53,8 @@ In scope:
   - The paper reports 625,537 images, 10,177 subjects, and 43 attributes covering face,
     illumination, environment and spoof type.
   - The Kaggle mirror used here holds 561,575 images across 9,193 subjects in its `intra_test` label
-    files. This figure is externally measured and not yet reproduced in-repo (`SCHEMA.md` §1.2).
+    files. This figure was reproduced in-repo by `scripts/build_manifest.py` on 2026-09-15
+    (`SCHEMA.md` §1.2).
 - Subject-disjoint train/val/test splits, so no identity appears in more than one split. The
   official test split is kept unchanged (`ARCHITECTURE.md` ADR-009).
 - Evaluation with ISO/IEC 30107-3 PAD metrics, broken down by spoof type, illumination, and
@@ -142,8 +143,29 @@ class for APCER.
   Residual risks:
   - Annotation errors that do not show up as a path conflict cannot be detected this way, in either
     split. They would bias both training and the reported metrics.
-  - The meaning of annotation indices 41 and 42 is not verified. Illumination and environment
-    breakdowns wait until it is confirmed.
+- **Skewed capture conditions.** Indices 41 (illumination) and 42 (environment) are verified, so
+  evaluation can be broken down by them (`SCHEMA.md` §1.1).
+  - Illumination is heavily skewed: code 1 covers 59% of the official-train spoof images
+    (`SCHEMA.md` §1.1.1, externally measured, not yet reproduced in-repo).
+  - Per-condition results for illumination codes 2–4 will therefore rest on much smaller samples
+    and be noisier.
+  - The test-split distribution has not been measured.
+- **Live/spoof prior shift between val and test.** The live fraction is 33.0% in train and 32.7% in
+  val, but 29.7% in test (`SCHEMA.md` §1.2).
+  - Train/val stratification is working. The difference is a property of the official test split,
+    which is not modified.
+  - Consequence: a threshold calibrated on val is not guaranteed to keep its operating point on
+    test.
+    - APCER and BPCER are conditional on the true class, so the prior shift alone does not move
+      them at a fixed threshold.
+    - It does move prior-dependent quantities (accuracy, precision, error pooled over both classes)
+      and any threshold rule that weighs the class prior, such as a cost-weighted rule.
+    - The test split's different make-up, for example its spoof-type or capture-condition mix, can
+      also move APCER and BPCER.
+  - The evaluation code must therefore report the operating point it was calibrated at and the
+    split it was calibrated on.
+  - No mitigation is chosen yet. This is an input to the Week 2 evaluation design (`PROGRESS.md`
+    open questions).
 - **Licensing.** Dataset terms may restrict redistributing images, which affects failure galleries
   in public reports. TBD — check license terms before Week 1 manifest.
 - **Demographic performance.** BPCER may differ across groups. CelebA face attributes allow coarse

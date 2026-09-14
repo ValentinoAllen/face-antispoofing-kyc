@@ -20,7 +20,12 @@ import pandas as pd
 
 from antispoof.data import labels
 from antispoof.data.config import DataConfig
-from antispoof.data.manifest import ManifestStats, build_manifest, load_label_json
+from antispoof.data.manifest import (
+    ATTACK_CODE_COLUMNS,
+    ManifestStats,
+    build_manifest,
+    load_label_json,
+)
 from antispoof.data.splits import (
     SPLIT_ASSIGNMENT_COLUMNS,
     assign_validation,
@@ -45,6 +50,14 @@ class SplitSummary:
 
 
 @dataclass(frozen=True)
+class CodeCounts:
+    """Value counts of each attack-code column over the rows stored under ``spoof/``."""
+
+    spoof_rows: int
+    counts: dict[str, dict[int, int]]
+
+
+@dataclass(frozen=True)
 class SplitOutputs:
     """Final per-split manifests and the subject-level split assignment."""
 
@@ -61,6 +74,7 @@ class BuildReport:
     test_stats: ManifestStats
     source_overlap_subjects: tuple[str, ...]
     source_unique_subjects: int
+    code_counts: dict[str, CodeCounts]
     summaries: dict[str, SplitSummary]
     manifest_paths: dict[str, Path]
 
@@ -163,6 +177,30 @@ def summarize_split(manifest: pd.DataFrame) -> SplitSummary:
     )
 
 
+def count_attack_codes(manifest: pd.DataFrame) -> CodeCounts:
+    """Count the values of each attack-code column on rows stored under ``spoof/``.
+
+    These are the index 40–42 distributions recorded in ``docs/SCHEMA.md`` §1.1. Codes are
+    1-indexed; a ``labels.CODE_NOT_APPLICABLE`` value here would break the documented convention.
+
+    Args:
+        manifest: A manifest with ``path_kind`` and the ``ATTACK_CODE_COLUMNS``.
+
+    Returns:
+        The number of ``spoof/`` rows and, per column, a mapping from code to row count, sorted by
+        code.
+    """
+    spoof_rows = manifest.loc[manifest["path_kind"] == labels.PATH_KIND_SPOOF]
+    counts = {
+        column: {
+            int(code): int(count)
+            for code, count in spoof_rows[column].value_counts().sort_index().items()
+        }
+        for column in ATTACK_CODE_COLUMNS
+    }
+    return CodeCounts(spoof_rows=len(spoof_rows), counts=counts)
+
+
 def run(config: DataConfig) -> BuildReport:
     """Build, validate and write the manifests and the split assignment.
 
@@ -192,6 +230,10 @@ def run(config: DataConfig) -> BuildReport:
         test_stats=test_stats,
         source_overlap_subjects=overlap,
         source_unique_subjects=len(train_subjects | test_subjects),
+        code_counts={
+            labels.SPLIT_TRAIN: count_attack_codes(train_manifest),
+            labels.SPLIT_TEST: count_attack_codes(test_manifest),
+        },
         summaries={name: summarize_split(frame) for name, frame in outputs.manifests.items()},
         manifest_paths=manifest_paths,
     )
@@ -224,6 +266,8 @@ def format_report(report: BuildReport) -> str:
         f"{report.source_unique_subjects:,}; in both train and test: "
         f"{', '.join(report.source_overlap_subjects) or 'none'}",
         "",
+        *_format_code_counts(report.code_counts),
+        "",
         "Final splits",
         *(
             f"  {name}: rows={s.rows:,} subjects={s.subjects:,} live={s.live:,} spoof={s.spoof:,}"
@@ -247,6 +291,19 @@ def _split_train_manifest(
         name: kept.loc[kept["split"] == name].reset_index(drop=True)
         for name in (labels.SPLIT_TRAIN, labels.SPLIT_VAL)
     }
+
+
+def _format_code_counts(code_counts: dict[str, CodeCounts]) -> list[str]:
+    lines = ["Attack codes on rows under spoof/, after conflict policy (1-indexed; 0 = n/a)"]
+    for source_split, counts in code_counts.items():
+        lines.append(f"  {source_split}: spoof/ rows={counts.spoof_rows:,}")
+        lines.extend(
+            f"    {column}: "
+            + " ".join(f"{code}={count:,}" for code, count in by_code.items())
+            + f" ({len(by_code)} distinct)"
+            for column, by_code in counts.counts.items()
+        )
+    return lines
 
 
 def _format_stats(stats: ManifestStats) -> list[str]:

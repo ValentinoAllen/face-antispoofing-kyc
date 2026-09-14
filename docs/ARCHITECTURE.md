@@ -187,7 +187,7 @@ Each ADR records context, decision and consequence. Superseded decisions are mar
 
 ### ADR-009: Official-split defects and how they are handled
 - **Context:** checking the mirror's `intra_test` protocol found two defects. Counts are in
-  `SCHEMA.md` §1.2, externally measured.
+  `SCHEMA.md` §1.2, reproduced in-repo by `scripts/build_manifest.py` on 2026-09-15.
   1. **Not subject-disjoint.** Subjects `5028`, `7332` and `9735` appear in both the official train
      and test splits, in the label files and on disk. No image path appears in both.
   2. **Label/path conflicts.** 2,022 images stored under `train/*/live/` carry index 43 == 1
@@ -209,8 +209,8 @@ Each ADR records context, decision and consequence. Superseded decisions are mar
      - Exclusion is the conservative choice and costs 1.2% of train live images.
      - Every manifest build logs the number of affected rows.
 - **Consequence:**
-  - Train loses the conflicting rows and the shared subjects' train images. The final train and val
-    counts come from the first Kaggle run of `scripts/build_manifest.py`.
+  - Train loses the conflicting rows and the shared subjects' train images. The resulting train, val
+    and test counts are in `SCHEMA.md` §1.2 ("Produced split").
   - These images are called *conflicting*, because which side is wrong was not established.
   - Changing the policy is a config change, recorded in the resolved config.
   - Supersedes the "official vs custom split" pending decision.

@@ -27,7 +27,13 @@ from antispoof.data.manifest import (
 
 REPO_DATA_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "data.yaml"
 TRAIN, TEST = labels.SPLIT_TRAIN, labels.SPLIT_TEST
-ACCESSORS = [labels.get_label, labels.get_spoof_type, labels.get_attr_41, labels.get_attr_42]
+ACCESSORS = [
+    labels.get_label,
+    labels.get_spoof_type,
+    labels.get_illumination,
+    labels.get_environment,
+    labels.validate_attack_codes,
+]
 
 
 # ---------------------------------------------------------------- annotation vector
@@ -41,11 +47,11 @@ def test_every_accessor_validates_vector_length(accessor, length) -> None:
 
 
 def test_accessors_read_the_documented_indices(make_vector) -> None:
-    vector = make_vector(labels.LABEL_SPOOF, spoof_type=3, attr_41=5, attr_42=7)
+    vector = make_vector(labels.LABEL_SPOOF, spoof_type=3, illumination=5, environment=7)
     assert labels.get_label(vector) == labels.LABEL_SPOOF
     assert labels.get_spoof_type(vector) == 3
-    assert labels.get_attr_41(vector) == 5
-    assert labels.get_attr_42(vector) == 7
+    assert labels.get_illumination(vector) == 5
+    assert labels.get_environment(vector) == 7
 
 
 def test_unknown_label_value_is_rejected(make_vector) -> None:
@@ -53,6 +59,45 @@ def test_unknown_label_value_is_rejected(make_vector) -> None:
     vector[labels.INDEX_LABEL] = 2
     with pytest.raises(labels.LabelVectorError, match="not one of"):
         labels.get_label(vector)
+
+
+# ---------------------------------------------------------------- attack code convention
+
+
+def test_spoof_vector_with_category_codes_passes(make_vector) -> None:
+    labels.validate_attack_codes(
+        make_vector(labels.LABEL_SPOOF, spoof_type=10, illumination=4, environment=2)
+    )
+
+
+def test_live_vector_with_not_applicable_codes_passes(make_vector) -> None:
+    labels.validate_attack_codes(make_vector(labels.LABEL_LIVE))
+
+
+@pytest.mark.parametrize("index", labels.ATTACK_CODE_INDICES)
+def test_not_applicable_code_on_spoof_vector_is_rejected(make_vector, index) -> None:
+    vector = make_vector(labels.LABEL_SPOOF, spoof_type=1, illumination=1, environment=1)
+    vector[index] = labels.CODE_NOT_APPLICABLE
+    with pytest.raises(labels.LabelVectorError, match=f"spoof vector.*index {index} = 0"):
+        labels.validate_attack_codes(vector)
+
+
+@pytest.mark.parametrize("index", labels.ATTACK_CODE_INDICES)
+def test_category_code_on_live_vector_is_rejected(make_vector, index) -> None:
+    vector = make_vector(labels.LABEL_LIVE)
+    vector[index] = 1
+    with pytest.raises(labels.LabelVectorError, match=f"live vector.*index {index} = 1"):
+        labels.validate_attack_codes(vector)
+
+
+def test_every_offending_index_is_named(make_vector) -> None:
+    with pytest.raises(labels.LabelVectorError, match="index 40 = 0, index 41 = 0, index 42 = 0"):
+        labels.validate_attack_codes(make_vector(labels.LABEL_SPOOF))
+
+
+def test_synthetic_fixture_vectors_follow_the_code_convention(make_labels) -> None:
+    for vector in make_labels(TRAIN, {"0001": (2, 3)}).values():
+        labels.validate_attack_codes(vector)
 
 
 # ---------------------------------------------------------------- path parsing

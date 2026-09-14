@@ -19,11 +19,14 @@ MANIFEST_COLUMNS = (
     "split",
     "label",
     "spoof_type",
-    "attr_41",
-    "attr_42",
+    "illumination",
+    "environment",
     "path_kind",
     "conflict",
 )
+
+ATTACK_CODE_COLUMNS = ("spoof_type", "illumination", "environment")
+"""Manifest columns holding the 1-indexed codes of ``labels.ATTACK_CODE_INDICES``."""
 
 _DTYPES = {
     "image_path": str,
@@ -31,8 +34,8 @@ _DTYPES = {
     "split": str,
     "label": "int8",
     "spoof_type": "int32",
-    "attr_41": "int32",
-    "attr_42": "int32",
+    "illumination": "int32",
+    "environment": "int32",
     "path_kind": str,
     "conflict": bool,
 }
@@ -175,8 +178,8 @@ def _manifest_row(
     try:
         label = labels.get_label(vector)
         spoof_type = labels.get_spoof_type(vector)
-        attr_41 = labels.get_attr_41(vector)
-        attr_42 = labels.get_attr_42(vector)
+        illumination = labels.get_illumination(vector)
+        environment = labels.get_environment(vector)
     except labels.LabelVectorError as error:
         raise labels.LabelVectorError(f"{image_path!r}: {error}") from error
     conflict = label != labels.PATH_KIND_TO_LABEL[parsed.path_kind]
@@ -186,8 +189,8 @@ def _manifest_row(
         parsed.source_split,
         label,
         spoof_type,
-        attr_41,
-        attr_42,
+        illumination,
+        environment,
         parsed.path_kind,
         conflict,
     )

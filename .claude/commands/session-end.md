@@ -1,7 +1,7 @@
 ---
-description: Close the working session. Update PROGRESS.md and EXPERIMENTS.md from what actually happened, then commit.
+description: Close the working session. Update PROGRESS.md and EXPERIMENTS.md from what actually happened, then commit and push.
 argument-hint: "[optional note about the session]"
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(date:*), Read, Edit, Write, Glob, Grep
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(git push), Bash(date:*), Read, Edit, Write, Glob, Grep
 ---
 
 End the current working session. Optional note from the owner: $ARGUMENTS
@@ -22,7 +22,11 @@ End the current working session. Optional note from the owner: $ARGUMENTS
   - The commit message must not contain `Co-Authored-By` for any AI, a "Generated with" footer, a
     `Claude-Session:` line, or any mention of Claude, Anthropic or AI assistance.
   - Never use `--no-verify`.
-- **Do not push**, and do not add remotes.
+- **Pushing** (`RULES.md` §6 item 5).
+  - Push only in step 6, with a plain `git push`. Never use `--force`, `--force-with-lease`, `-f`
+    or any other flag.
+  - Do not add remotes.
+  - Never report a push as successful unless `git push` returned success.
 
 ## Steps
 
@@ -82,6 +86,15 @@ modify existing rows.
    fewer; an optional short body listing the main changes.
 4. Run `git log -1 --format=full` and show the output. Confirm there are no trailers.
 
-### 6. Report back
+### 6. Push
+Run this step only if step 5 created a commit.
+1. Run `git push` exactly, with no flags and no arguments. Never `--force` or `--force-with-lease`.
+2. If it returns success, keep the output line that shows the updated ref.
+3. If it fails for any reason (no upstream, rejected, authentication, network, hook), do not retry
+   with other flags, and do not pull, rebase or amend to make it succeed. Show the actual error
+   output and state plainly: **the commit is local only; it was not pushed.**
+
+### 7. Report back
 Give a short summary: the new Current status paragraph, the session-log entry, any ledger rows
-added, and the commit SHA.
+added, the commit SHA, and the push result: either pushed (with the updated ref line) or local only
+(with the error).

@@ -35,21 +35,58 @@ The index layout is defined in code only in `antispoof.data.labels`.
 | Index | Meaning | Status | Notes | Manifest column |
 |---|---|---|---|---|
 | 0–39 | 40 CelebA face attributes | Verified | Populated only for live images; all zero for spoof images | not in v1 |
-| 40 | Spoof type code | Verified | Zero for live images. Names for the codes are not recorded yet | `spoof_type` |
-| 41 | **Provisional.** Illumination condition by documentation convention; not verified against this mirror | Provisional | Zero for live images (measured) | `attr_41` |
-| 42 | **Provisional.** Environment by documentation convention; not verified against this mirror | Provisional | Zero for live images (measured) | `attr_42` |
+| 40 | Spoof type code | Verified | 1-indexed code, 10 distinct values on spoof images (§1.1.1). `0` = not applicable, live images only. Names for the codes are not recorded yet | `spoof_type` |
+| 41 | Illumination condition | Verified | 1-indexed code, 4 distinct values on spoof images (§1.1.1). `0` = not applicable, live images only. Names for the codes are not recorded | `illumination` |
+| 42 | Environment | Verified | 1-indexed code, 2 distinct values on spoof images (§1.1.1). `0` = not applicable, live images only. Names for the codes are not recorded | `environment` |
 | 43 | Live/spoof label: `0` = live, `1` = spoof. The training target | Verified | On the test split it agrees with the `live/` vs `spoof/` path segment for all 67,170 entries | `label` |
 
-The meaning of indices 41 and 42 is an open question. It will be confirmed by unique-value counts on
-the mirror (`PROGRESS.md`). Until then, code and manifest columns name them only by index.
+**Code convention for indices 40–42.**
+
+- The codes are **1-indexed** categories.
+- `0` is not a category. It means "not applicable" and occurs only on live images
+  (`labels.CODE_NOT_APPLICABLE`).
+- A raw code is never a zero-based class index. Any class index must be derived from the code
+  explicitly.
+- `antispoof.data.labels.validate_attack_codes` checks one vector. On a spoof vector (index 43 ==
+  1) it rejects `0` at any of indices 40–42. On a live vector it rejects any non-zero value there.
+- The builder does not call the validator yet. The distributions in §1.1.1 cover only official-train
+  images under `spoof/`. The codes on the 2,022 conflicting train rows (§1.2) and on the test split
+  have not been measured, so asserting the convention at build time could abort a build on rows it
+  was never checked against. TBD — decide before Week 2 baseline.
+
+### 1.1.1 Measured code distributions (indices 40–42)
+
+> **Externally measured, not yet reproduced in-repo.**
+> - Provenance: measured by the owner on Kaggle, 2026-09-15, against the mirror and the
+>   `intra_test` `train_label.json` above, over the 329,921 official-train images whose path
+>   contains `spoof/`.
+> - To be reproduced by `python scripts/build_manifest.py --config configs/data.yaml`. Its build
+>   report now prints these counts under "Attack codes on rows under spoof/" (`RULES.md` §6 item 7).
+>   The report counts `spoof/` rows after the conflict policy. Under `exclude` this is the same
+>   population, because all 2,022 train conflicts are stored under `live/` (§1.2).
+
+| Index | Column | Distinct codes | Images per code |
+|---|---|---|---|
+| 40 | `spoof_type` | 10 | 1: 35,547 · 2: 31,221 · 3: 31,776 · 4: 33,647 · 5: 30,167 · 6: 33,285 · 7: 29,050 · 8: 33,085 · 9: 31,527 · 10: 40,616 |
+| 41 | `illumination` | 4 | 1: 194,589 · 2: 66,342 · 3: 35,101 · 4: 33,889 |
+| 42 | `environment` | 2 | 1: 251,685 · 2: 78,236 |
+
+- Each distribution sums to 329,921. No image in this population has code `0`.
+- **Skew:** illumination code 1 accounts for 194,589 of the 329,921 images (59%). Evaluation broken
+  down by illumination will have much smaller samples for codes 2–4 (`PRD.md` §8).
+- The test-split distributions have not been measured.
 
 ### 1.2 Measured counts (`intra_test`, this mirror)
 
-> **Externally measured, not yet reproduced in-repo.**
-> - Provenance: measured by the owner on Kaggle, 2026-09-14, against the mirror and `intra_test`
+> **Reproduced in-repo on 2026-09-15 by `scripts/build_manifest.py`.**
+> - Originally measured by the owner on Kaggle, 2026-09-14, against the mirror and `intra_test`
 >   label files above, including the `Data/train` and `Data/test` directory listings.
-> - To be reproduced by `python scripts/build_manifest.py --config configs/data.yaml` on its first
->   Kaggle run (`RULES.md` §6 item 7).
+> - The owner ran `python scripts/build_manifest.py --config configs/data.yaml` on Kaggle on
+>   2026-09-15. Its printed counts matched every count previously recorded in this section exactly
+>   (`RULES.md` §6 item 7).
+> - Exception: the script reads only the label files. The two checks against the directory
+>   listings (shared subjects on disk; label files vs directories) remain **externally measured,
+>   not yet reproduced in-repo**.
 
 Official splits, counted by the `live/` vs `spoof/` **path segment**:
 
@@ -68,17 +105,34 @@ The same splits, counted by **index 43**:
 - **Conflicts** (path segment says live, index 43 says spoof): 2,022 in train, zero in test.
 - **Train after `conflict_policy: exclude`:** 492,383 rows (live 162,462, spoof 329,921).
 - **Shared subjects:** train and test share subjects `5028`, `7332` and `9735`.
-  - Confirmed in the label files and on disk.
+  - Confirmed in the label files (reproduced in-repo) and on disk (externally measured, not yet
+    reproduced in-repo).
   - No image path appears in both splits.
-- **Label files vs directories:** the listings under `Data/train` and `Data/test` match the label
-  files exactly. No subject is in a label file without a folder, and no folder lacks label entries.
-- **Not known yet:** row counts after removing the 3 excluded subjects, and the train/val sizes. The
-  first Kaggle run of `scripts/build_manifest.py` produces them.
+- **Label files vs directories** (externally measured, not yet reproduced in-repo): the listings
+  under `Data/train` and `Data/test` match the label files exactly. No subject is in a label file
+  without a folder, and no folder lacks label entries.
 - **Observed discrepancy:**
   - This mirror contains 561,575 images across 9,193 unique subjects.
   - The CelebA-Spoof paper reports 625,537 images and 10,177 subjects.
   - This is recorded as an observation about this mirror, not as a corrected figure. `intra_test`
     may not span the full dataset.
+
+**Produced split.** Printed by the same 2026-09-15 run of `scripts/build_manifest.py`, with
+`conflict_policy=exclude`, `val_fraction=0.1`, `seed=42` and `stratify_bins=10`:
+
+| split | rows    | subjects | live    | spoof   | live fraction |
+|-------|---------|----------|---------|---------|---------------|
+| train | 442,859 | 7,370    | 146,280 | 296,579 | 33.0%         |
+| val   |  49,308 |   819    |  16,123 |  33,185 | 32.7%         |
+| test  |  67,170 | 1,004    |  19,923 |  47,247 | 29.7%         |
+
+- Official train after the conflict policy, before subject exclusion: 492,383 rows across 8,192
+  subjects. The 3 excluded subjects account for the 216-row difference between that figure and
+  train + val.
+- The live fraction of train and val agrees, so the stratification works. The lower live fraction in
+  test is a property of the official test split, which is not modified. The consequences for
+  threshold calibration are recorded in `PRD.md` §8 and `PROGRESS.md` open questions.
+- The subject assignment is committed as `configs/splits/split_assignment.csv` (§2).
 
 ### 1.3 Columns
 
@@ -88,9 +142,9 @@ The same splits, counted by **index 43**:
 | `subject_id` | string | no | Path component after `train`/`test`. Stored as a string so leading zeros survive |
 | `split` | category (string) | no | `train`, `val` or `test`. Test rows keep the official split; val is assigned per subject (§2) |
 | `label` | int8 | no | `0` = live (bona fide), `1` = spoof (attack). From index 43, or from `path_kind` under `trust_path` |
-| `spoof_type` | int32 | no | Raw index-40 code. Names for the codes are TBD — decide before Week 3 error analysis |
-| `attr_41` | int32 | no | Raw index-41 code. Meaning provisional (§1.1) |
-| `attr_42` | int32 | no | Raw index-42 code. Meaning provisional (§1.1) |
+| `spoof_type` | int32 | no | Raw index-40 code, 1-indexed; `0` (not applicable) only on live rows (§1.1). Names for the codes are TBD — decide before Week 3 error analysis |
+| `illumination` | int32 | no | Raw index-41 code, 1-indexed; `0` (not applicable) only on live rows (§1.1) |
+| `environment` | int32 | no | Raw index-42 code, 1-indexed; `0` (not applicable) only on live rows (§1.1) |
 | `path_kind` | category (string) | no | `live` or `spoof`: the path component after `subject_id` |
 | `conflict` | bool | no | `True` when `path_kind` disagrees with index 43, in either direction |
 
@@ -112,8 +166,9 @@ Row-level invariants:
   therefore have `conflict == True` while `label` matches `path_kind`.
 - Under `exclude`, no row has `conflict == True`.
 - Where `conflict == False`: `label == 0` ⇔ `path_kind == "live"`.
-- Expected from §1.1, but not asserted by the builder: `label == 0` ⇒ `spoof_type == attr_41 ==
-  attr_42 == 0` on rows with `conflict == False`.
+- Expected from the §1.1 code convention, but not asserted by the builder: on rows with
+  `conflict == False`, `label == 0` ⇒ `spoof_type == illumination == environment == 0`, and
+  `label == 1` ⇒ all three are ≥ 1.
 - The 40 CelebA face attributes are **not** in manifest v1. If they are needed for slicing, they go
   in a separate table keyed by `image_path`.
 
@@ -138,8 +193,8 @@ Manifest-level invariants:
 - **Path:** `configs/splits/split_assignment.csv`.
   - It holds subject identifiers only (no images or personal data), and it is committed so the split
     is reproducible.
-  - **Not yet generated.** The first Kaggle run of `scripts/build_manifest.py` produces it, and it is
-    committed afterwards.
+  - **Committed.** Produced by the owner's Kaggle run of `scripts/build_manifest.py` on 2026-09-15:
+    train 7,370, val 819 and test 1,004 subjects (§1.2).
 - **Format:** UTF-8 CSV with a header row and one row per subject, sorted by `subject_id`.
 - **Produced by:** `antispoof.data.build.run`.
 - **Loaded with:** `antispoof.data.splits.load_split_assignment`, which validates the file.
@@ -195,7 +250,8 @@ Enforcement:
 3. `ensure_test_untouched` refuses any build whose conflict policy would drop or relabel a test row.
 4. `tests/test_splits.py` covers these functions on synthetic fixtures. It includes subjects with a
    single image, tiny datasets, shared subjects, determinism for a fixed seed, and stratification
-   tolerance.
+   tolerance. It also loads the committed `configs/splits/split_assignment.csv` and asserts that its
+   three subject sets are pairwise disjoint and that the excluded subjects are only in test.
 5. Each run record stores `split_sha256`, so the split behind every reported number can be identified.
 
 ## 3. Experiment record
