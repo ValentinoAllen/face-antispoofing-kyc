@@ -7,83 +7,196 @@ against this file.
 Conventions: dtypes are pandas/NumPy dtypes for CSV artifacts and JSON types for JSON artifacts.
 "Nullable = no" means an empty value is a validation error.
 
-## 1. Image manifest CSV
+## 1. Image manifest (manifest v1)
 
-- **Path:** `data/manifests/manifest.csv` (gitignored).
-- **Format:** UTF-8 CSV with a header row and one row per image.
-- **Produced by:** the manifest builder in `antispoof.data`.
+- **Paths:** `data/manifests/manifest_train.csv`, `manifest_val.csv` and `manifest_test.csv`. They
+  are gitignored, never committed, and regenerated on Kaggle (`ARCHITECTURE.md` ADR-008).
+- **Format:** UTF-8 CSV with a header row and one row per image, sorted by `image_path`.
+- **Produced by:** `scripts/build_manifest.py` → `antispoof.data.build.run`, configured by
+  `configs/data.yaml`.
+
+### 1.1 Source: CelebA-Spoof label files
+
+- **Mirror:**
+  `/kaggle/input/datasets/attentionlayer241/celeba-spoof-for-face-antispoofing/CelebA_Spoof_/CelebA_Spoof`
+- **Label files used:** `metas/intra_test/train_label.json` and `metas/intra_test/test_label.json`.
+  - The `train_label.txt` and `test_label.txt` files in the same directory are not used.
+  - Other protocols available under `metas/`: `protocol1/` and
+    `protocol2/{test_on_high_quality_device,test_on_middle_quality_device,test_on_low_quality_device}/`.
+    They are not used for now.
+- **Structure:** each label file is a JSON object.
+  - Keys are relative image paths of the form `Data/{train,test}/{subject_id}/{live,spoof}/{filename}`.
+    The builder parses them by locating the `train`/`test` component, not by a fixed index.
+  - Values are lists of exactly **44** integers. The builder raises on any other length.
+  - The paper's attribute count suggests 43, but the vector has a 44th entry, which is the label.
+
+The index layout is defined in code only in `antispoof.data.labels`.
+
+| Index | Meaning | Status | Notes | Manifest column |
+|---|---|---|---|---|
+| 0–39 | 40 CelebA face attributes | Verified | Populated only for live images; all zero for spoof images | not in v1 |
+| 40 | Spoof type code | Verified | Zero for live images. Names for the codes are not recorded yet | `spoof_type` |
+| 41 | **Provisional.** Illumination condition by documentation convention; not verified against this mirror | Provisional | Zero for live images (measured) | `attr_41` |
+| 42 | **Provisional.** Environment by documentation convention; not verified against this mirror | Provisional | Zero for live images (measured) | `attr_42` |
+| 43 | Live/spoof label: `0` = live, `1` = spoof. The training target | Verified | On the test split it agrees with the `live/` vs `spoof/` path segment for all 67,170 entries | `label` |
+
+The meaning of indices 41 and 42 is an open question. It will be confirmed by unique-value counts on
+the mirror (`PROGRESS.md`). Until then, code and manifest columns name them only by index.
+
+### 1.2 Measured counts (`intra_test`, this mirror)
+
+> **Externally measured, not yet reproduced in-repo.**
+> - Provenance: measured by the owner on Kaggle, 2026-09-14, against the mirror and `intra_test`
+>   label files above, including the `Data/train` and `Data/test` directory listings.
+> - To be reproduced by `python scripts/build_manifest.py --config configs/data.yaml` on its first
+>   Kaggle run (`RULES.md` §6 item 7).
+
+Official splits, counted by the `live/` vs `spoof/` **path segment**:
+
+| split | images  | subjects | live    | spoof   |
+|-------|---------|----------|---------|---------|
+| train | 494,405 | 8,192    | 164,484 | 329,921 |
+| test  |  67,170 | 1,004    |  19,923 |  47,247 |
+
+The same splits, counted by **index 43**:
+
+| split | images  | live    | spoof   |
+|-------|---------|---------|---------|
+| train | 494,405 | 162,462 | 331,943 |
+| test  |  67,170 |  19,923 |  47,247 |
+
+- **Conflicts** (path segment says live, index 43 says spoof): 2,022 in train, zero in test.
+- **Train after `conflict_policy: exclude`:** 492,383 rows (live 162,462, spoof 329,921).
+- **Shared subjects:** train and test share subjects `5028`, `7332` and `9735`.
+  - Confirmed in the label files and on disk.
+  - No image path appears in both splits.
+- **Label files vs directories:** the listings under `Data/train` and `Data/test` match the label
+  files exactly. No subject is in a label file without a folder, and no folder lacks label entries.
+- **Not known yet:** row counts after removing the 3 excluded subjects, and the train/val sizes. The
+  first Kaggle run of `scripts/build_manifest.py` produces them.
+- **Observed discrepancy:**
+  - This mirror contains 561,575 images across 9,193 unique subjects.
+  - The CelebA-Spoof paper reports 625,537 images and 10,177 subjects.
+  - This is recorded as an observation about this mirror, not as a corrected figure. `intra_test`
+    may not span the full dataset.
+
+### 1.3 Columns
 
 | Column | dtype | Nullable | Constraint |
 |---|---|---|---|
-| `image_path` | string | no | POSIX path relative to the dataset root; unique across the manifest; the file must exist when the manifest is built |
-| `subject_id` | string | no | Subject identifier from the dataset directory structure; stored as a string to avoid losing leading zeros |
-| `label` | int8 | no | `0` = bona fide (live), `1` = attack (spoof) |
-| `spoof_type` | category (string) | no | `live` for bona fide rows; otherwise one of the dataset's PAI species names. The exact name list and the mapping from raw annotation codes are TBD — verify against the CelebA-Spoof annotation docs before Week 1 manifest |
-| `illumination` | category (string) | yes | Illumination condition name from the dataset annotations. Whether bona fide rows carry a value or null is TBD — verify before Week 1 manifest |
-| `environment` | category (string) | yes | Environment condition name from the dataset annotations. Same verification note as `illumination` |
-| `bbox_x` | int32 | yes | Left edge in **original image pixel coordinates**, ≥ 0 |
-| `bbox_y` | int32 | yes | Top edge in original image pixel coordinates, ≥ 0 |
-| `bbox_w` | int32 | yes | > 0; `bbox_x + bbox_w` ≤ image width |
-| `bbox_h` | int32 | yes | > 0; `bbox_y + bbox_h` ≤ image height |
-| `source_split` | category (string) | no | The dataset's own split for this image (`train` / `test`), kept for traceability |
-| `split` | category (string) | no | `train`, `val` or `test`. Joined from the split file (§2); it is never set independently |
+| `image_path` | string | no | The label-file key: POSIX path relative to the dataset root. Unique across the three manifests |
+| `subject_id` | string | no | Path component after `train`/`test`. Stored as a string so leading zeros survive |
+| `split` | category (string) | no | `train`, `val` or `test`. Test rows keep the official split; val is assigned per subject (§2) |
+| `label` | int8 | no | `0` = live (bona fide), `1` = spoof (attack). From index 43, or from `path_kind` under `trust_path` |
+| `spoof_type` | int32 | no | Raw index-40 code. Names for the codes are TBD — decide before Week 3 error analysis |
+| `attr_41` | int32 | no | Raw index-41 code. Meaning provisional (§1.1) |
+| `attr_42` | int32 | no | Raw index-42 code. Meaning provisional (§1.1) |
+| `path_kind` | category (string) | no | `live` or `spoof`: the path component after `subject_id` |
+| `conflict` | bool | no | `True` when `path_kind` disagrees with index 43, in either direction |
+
+**Conflict policy** (`data.conflict_policy`, `ARCHITECTURE.md` ADR-009):
+
+| Value | Effect on conflicting rows |
+|---|---|
+| `exclude` (default) | Dropped |
+| `trust_label` | Kept; `label` comes from index 43 |
+| `trust_path` | Kept; `label` comes from `path_kind` |
+
+- Every build logs how many conflicting rows it found, dropped and relabelled.
+- The build refuses (`ProtectedTestSplitError`) any policy that would drop or relabel a test row.
+- These rows are described as **conflicting**, because which side is wrong has not been established.
 
 Row-level invariants:
 
-- `label == 0` ⇔ `spoof_type == "live"`.
-- The four `bbox_*` columns are either all null or all non-null.
-- The raw bounding-box coordinate convention (absolute pixels vs a rescaled frame) is TBD — verify
-  before Week 1 manifest. The manifest always stores original-image pixels.
-- The 40 CelebA face attributes are **not** in manifest v1. If they are needed for slicing, they go in
-  a separate table keyed by `image_path`.
+- `conflict` is computed from index 43 before the policy is applied. Under `trust_path`, a row can
+  therefore have `conflict == True` while `label` matches `path_kind`.
+- Under `exclude`, no row has `conflict == True`.
+- Where `conflict == False`: `label == 0` ⇔ `path_kind == "live"`.
+- Expected from §1.1, but not asserted by the builder: `label == 0` ⇒ `spoof_type == attr_41 ==
+  attr_42 == 0` on rows with `conflict == False`.
+- The 40 CelebA face attributes are **not** in manifest v1. If they are needed for slicing, they go
+  in a separate table keyed by `image_path`.
 
 Manifest-level invariants:
 
-- Every `subject_id` maps to exactly one `split` value.
-- The manifest is accompanied by `manifest.meta.json` with `sha256` (of the CSV), `row_count`,
-  `created_at` and `git_sha`. The counts are computed, never typed in.
+- `image_path` is unique across the three files. This holds by construction: label-file keys are
+  unique, and train and test paths differ in their split component.
+- Every `subject_id` maps to exactly one `split` across the three files. `validate_splits` checks
+  this on the stacked manifests at build time (§2).
+- Sidecar `manifest.meta.json` (`sha256` of each CSV, `row_count`, `created_at`, `git_sha`): not yet
+  produced. TBD — decide before Week 2 baseline.
 
-## 2. Split file
+### 1.4 Bounding boxes (not in manifest v1)
 
-- **Path:** `configs/splits/<split_name>.csv`. It contains no images or personal data, only subject
-  identifiers, and it is committed so splits are reproducible.
-- **Format:** UTF-8 CSV with a header row and one row per subject.
+- Manifest v1 has **no** bounding-box columns, not even empty placeholders.
+- The bounding-box format is an open question. One observed clue: a file named `004046_BB.txt` at
+  the dataset root, which suggests per-image `{image_id}_BB.txt` sidecar files. This is unverified.
+- Bounding-box columns will be added in manifest v2, once the format is confirmed.
+
+## 2. Split assignment file
+
+- **Path:** `configs/splits/split_assignment.csv`.
+  - It holds subject identifiers only (no images or personal data), and it is committed so the split
+    is reproducible.
+  - **Not yet generated.** The first Kaggle run of `scripts/build_manifest.py` produces it, and it is
+    committed afterwards.
+- **Format:** UTF-8 CSV with a header row and one row per subject, sorted by `subject_id`.
+- **Produced by:** `antispoof.data.build.run`.
+- **Loaded with:** `antispoof.data.splits.load_split_assignment`, which validates the file.
 
 | Column | dtype | Nullable | Constraint |
 |---|---|---|---|
-| `subject_id` | string | no | Unique within the file; must exist in the manifest |
+| `subject_id` | string | no | Unique within the file; present in exactly one manifest |
 | `split` | category (string) | no | `train`, `val` or `test` |
 
-Sidecar `configs/splits/<split_name>.meta.yaml`:
+How the split is built (ADR-009, settings in `configs/data.yaml`):
 
-| Key | Type | Nullable | Constraint |
-|---|---|---|---|
-| `split_name` | string | no | Matches the file name |
-| `strategy` | string | no | `official` or `custom_subject_disjoint` |
-| `seed` | int | yes | Required when `strategy == custom_subject_disjoint` |
-| `ratios` | map[str, float] | yes | Requested subject-level fractions for `train`/`val`/`test`; must sum to 1.0. Required for custom splits |
-| `manifest_sha256` | string | no | Hash of the manifest the split was built from |
-| `split_sha256` | string | no | Hash of the split CSV |
-| `created_at` | string (ISO 8601 UTC) | no | |
-| `git_sha` | string | no | 40-character hex |
+- **Test:** the official test split, unchanged.
+- **Val:** a fraction `val_fraction` of the remaining official-train subjects.
+  - Assigned per subject, seeded with `seed`.
+  - Stratified by each subject's spoof-image fraction into `stratify_bins` equal-count strata.
+- **Train:** the remaining subjects.
+- **Excluded subjects:** listed only as `test`.
+
+Sidecar `configs/splits/split_assignment.meta.yaml`:
+- Not yet produced.
+- Run records need it to cite `split_sha256` (§3).
+- Its keys are TBD — decide before Week 2 baseline.
 
 ### Invariant: subject disjointness
 
-Let `S_train`, `S_val` and `S_test` be the sets of `subject_id` assigned to each split. Then:
+Definitions:
+
+- `R`: subjects in the official train manifest after the conflict policy.
+- `T`: subjects in the official test manifest.
+- `E`: `data.excluded_subjects` = {`5028`, `7332`, `9735`}.
+- `S_train`, `S_val`, `S_test`: the subjects assigned to each split.
 
 ```
+S_test           = T
+S_train ∪ S_val  = R \ E
 S_train ∩ S_val  = ∅
 S_train ∩ S_test = ∅
 S_val   ∩ S_test = ∅
-S_train ∪ S_val ∪ S_test = set(manifest.subject_id)
 ```
+
+The official splits share exactly the subjects in `E` (§1.2). The last two equations therefore hold
+only because `E` is removed from train and val, and never from test.
 
 Enforcement:
 
-1. A unit test in `tests/` checks the split function on a synthetic manifest, including adversarial
-   cases such as subjects with a single image, or subjects that appear in both source splits.
-2. The dataset loader asserts disjointness at start-up and refuses to train if it fails.
-3. Each run record stores `split_sha256`, so the split behind every reported number can be identified.
+1. `antispoof.data.splits.validate_splits` is the single source of truth for disjointness.
+   - It asserts that the three pairwise intersections are empty and that no subject in `E` is in
+     train or val.
+   - On failure it raises `SplitLeakageError` listing the offending subject ids.
+   - It is called at build time on the assignment and on the stacked manifests, and by
+     `load_split_assignment`. Dataset loaders must load splits through `load_split_assignment`.
+2. `validate_coverage` asserts the first two equations at build time.
+3. `ensure_test_untouched` refuses any build whose conflict policy would drop or relabel a test row.
+4. `tests/test_splits.py` covers these functions on synthetic fixtures. It includes subjects with a
+   single image, tiny datasets, shared subjects, determinism for a fixed seed, and stratification
+   tolerance.
+5. Each run record stores `split_sha256`, so the split behind every reported number can be identified.
 
 ## 3. Experiment record
 

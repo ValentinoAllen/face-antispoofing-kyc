@@ -1,0 +1,31 @@
+# Data settings for building the manifests and the subject-level split.
+# Loaded by antispoof.data.config.load_data_config. Relative paths resolve against the working
+# directory (the repository root). Contracts: docs/SCHEMA.md §1–2. Decisions: ADR-008, ADR-009.
+
+data:
+  # CelebA-Spoof mirror on Kaggle. Data never leaves Kaggle (ADR-008).
+  dataset_root: /kaggle/input/datasets/attentionlayer241/celeba-spoof-for-face-antispoofing/CelebA_Spoof_/CelebA_Spoof
+  metas_dir: metas
+  protocol: intra_test
+  train_label_file: train_label.json
+  test_label_file: test_label.json
+
+  # Rows whose live/ or spoof/ path segment disagrees with label index 43 (ADR-009).
+  # One of: exclude | trust_label | trust_path.
+  conflict_policy: exclude
+
+  # Subjects found in both the official train and test splits. Removed from train/val only; the
+  # test split is never modified (ADR-009). Quoted so leading zeros survive.
+  excluded_subjects: ["5028", "7332", "9735"]
+
+  # Manifests are large and gitignored. The split assignment is small and committed.
+  manifest_dir: data/manifests
+  split_assignment_path: configs/splits/split_assignment.csv
+
+split:
+  # Fraction of the remaining official-train subjects assigned to validation.
+  val_fraction: 0.1
+  seed: 42
+  # Subjects are sorted by spoof-image fraction and cut into this many equal-count strata;
+  # validation subjects are drawn from each stratum in proportion to its size.
+  stratify_bins: 10

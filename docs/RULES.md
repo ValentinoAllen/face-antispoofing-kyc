@@ -116,3 +116,12 @@ assistant's defaults.
 5. **Do not push or add remotes.** The repository owner does that.
 6. **Ask when a decision belongs to the owner** (targets, scope, dataset handling, public-facing
    wording) instead of guessing.
+7. **Figures measured outside this repository.**
+   - Any figure measured outside this repository (for example by the owner on Kaggle, before the
+     in-repo tooling existed) carries a provenance line. The line states who measured it, on what
+     date, against which artifact, and the command that will reproduce it in-repo.
+   - Mark such figures **"externally measured, not yet reproduced in-repo"**. Remove the mark only
+     once code in this repository has printed matching values, as item 2 requires, and cite that
+     output.
+   - If the in-repo output disagrees, record both values and the discrepancy. Never silently
+     overwrite either.

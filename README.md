@@ -14,14 +14,25 @@ users rejected (BPCER).
 
 ## Approach
 
-- **Data:** CelebA-Spoof (625,537 images, 10,177 subjects, 43 attributes), using
-  **subject-disjoint** train/val/test splits so identities never leak across splits.
+- **Data:** CelebA-Spoof (the paper reports 625,537 images, 10,177 subjects and 43 attributes),
+  using **subject-disjoint** train/val/test splits so identities never leak across splits.
 - **Model:** a PyTorch classifier on a pretrained backbone (timm). Heavy training runs on
   Kaggle/Colab GPUs.
 - **Evaluation:** APCER per attack type, BPCER, ACER, and BPCER at APCER = 1%, broken down by attack
   type, illumination and environment.
 - **Deployment:** post-training quantization → ONNX Runtime → FastAPI, with explicit errors for
   no-face, multiple-face and low-quality input.
+
+## Dataset
+
+Training uses a Kaggle mirror of CelebA-Spoof with the `intra_test` protocol. The mirror holds
+561,575 images across 9,193 subjects; the CelebA-Spoof paper reports 625,537 images and 10,177
+subjects. Checking the mirror found two defects: the official split is not subject-disjoint (3
+subjects appear in both train and test), and 2,022 train images stored under `live/` carry a spoof
+label, a conflict left unresolved and excluded by default. The overlapping subjects are dropped from
+train only, so the test split stays comparable to published work. The counts were measured on
+Kaggle and are not yet reproduced in-repo; see [ADR-009](docs/ARCHITECTURE.md) and
+[the data schema](docs/SCHEMA.md).
 
 ## Status
 

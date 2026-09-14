@@ -26,8 +26,8 @@
 .
 ├── .claude/settings.json    # Repo-level assistant settings (commit/PR attribution disabled)
 ├── .githooks/commit-msg     # Strips disallowed trailers from commit messages
-├── configs/                 # YAML experiment configs; the single source of hyperparameters
-├── data/                    # Raw dataset and derived manifests. Gitignored, never committed
+├── configs/                 # YAML configs (data.yaml, experiments) and splits/split_assignment.csv
+├── data/                    # Derived manifests, regenerated on Kaggle. Gitignored, never committed
 ├── docs/                    # PRD, architecture, design, schemas, rules, progress, experiment ledger
 ├── notebooks/               # EDA only. No logic that training or serving depends on
 ├── reports/                 # Generated figures, metric tables, evaluation outputs
@@ -47,14 +47,12 @@
 ## 3. End-to-end data flow
 
 ```
-CelebA-Spoof raw files (data/raw/, gitignored)
-        │  scripts/build_manifest.py  → antispoof.data
+CelebA-Spoof mirror on Kaggle (/kaggle/input/..., read in place, never downloaded; ADR-008)
+        │  scripts/build_manifest.py  → antispoof.data   (conflict policy; seeded subject-level val)
         ▼
-Image manifest CSV (one row per image; SCHEMA.md §1)
-        │  scripts/make_split.py      → antispoof.data   (seeded, subject-level)
-        ▼
-Split file (subject_id → train/val/test; SCHEMA.md §2)
-        │  invariant check: subject sets are pairwise disjoint (test + load-time assert)
+Manifests manifest_{train,val,test}.csv (data/manifests/, gitignored; SCHEMA.md §1)
+  + split assignment configs/splits/split_assignment.csv (subject_id → split, committed; §2)
+        │  invariant check: validate_splits at build time and at load time (ADR-009)
         ▼
 Dataset + transforms (face crop → resize → augment [train only] → normalize)
         │  scripts/train.py --config configs/<exp>.yaml   → antispoof.training
@@ -77,26 +75,28 @@ FastAPI service (antispoof.serving): decode → face detect → quality gate →
 JSON verdict (SCHEMA.md §4) → demo page / calling KYC backend
 ```
 
-The script names above describe where each entry point will live. None of them exist yet.
+`scripts/build_manifest.py` exists. The other script names describe where each entry point will
+live; they do not exist yet.
 
 ## 4. Compute split: local vs Kaggle/Colab
 
 | Task | Where | Notes |
 |---|---|---|
-| Manifest build, split generation, schema validation | Local (M5, 16 GB) | CPU and I/O only; no GPU needed |
-| EDA notebooks | Local | Use a sampled subset if the full manifest is too large for comfortable interactive work |
+| Manifest build, split generation, schema validation | Kaggle (CPU session) | The data stays on Kaggle (ADR-008). CPU and I/O only; no GPU needed |
+| EDA notebooks | Kaggle | The data stays on Kaggle (ADR-008). Use a sampled subset if the full manifest is too large for comfortable interactive work |
 | Unit tests, lint, type check | Local | Synthetic fixtures only |
-| Training smoke test (a few batches, tiny subset, overfit check) | Local (CPU or MPS) | Checks that the pipeline runs end to end; not used for metrics |
+| Training smoke test (a few batches, overfit check) | Local (CPU or MPS) on synthetic images, or Kaggle on a tiny subset | Checks that the pipeline runs end to end; not used for metrics |
 | Full training runs | Kaggle / Colab GPU | Configs are identical; only paths and device differ, set through config |
 | Full validation and test evaluation | Kaggle / Colab GPU | The test set is evaluated once, for the final model |
-| ONNX export, quantization, parity check | Local or Kaggle | Parity is checked on the same evaluation subset for FP32 and quantized models |
+| ONNX export, quantization, parity check | Export and quantization: local or Kaggle. Parity check: Kaggle | Parity needs evaluation data, which stays on Kaggle (ADR-008). It is checked on the same evaluation subset for FP32 and quantized models |
 | CPU latency benchmark | Local | The serving target is CPU; hardware is recorded with every number |
 | API and demo development | Local | uvicorn on localhost |
 
 Open items:
 
-- **Getting the dataset onto Kaggle/Colab** (official download vs an existing hosted copy, subject to
-  license terms). TBD — decide before Week 1 manifest.
+- **Getting the dataset onto Kaggle/Colab:** resolved by ADR-008. A hosted mirror on Kaggle is used
+  in place. Whether the dataset license permits using that hosted copy is still open (see
+  `PROGRESS.md`).
 - **Checkpoint handoff** between Kaggle/Colab and local (W&B artifacts vs downloaded output). TBD —
   decide before Week 2 baseline.
 
@@ -128,7 +128,9 @@ Each ADR records context, decision and consequence. Superseded decisions are mar
   must be pairwise disjoint. This is enforced by a unit test and by an assertion when data is loaded.
 - **Consequence:** Split sizes cannot be set exactly at the image level. Whether to reuse the official
   CelebA-Spoof split or build a custom one is TBD — decide before Week 1 manifest, after checking
-  whether the official split is subject-disjoint.
+  whether the official split is subject-disjoint. *(Resolved by ADR-009: the official split is not
+  subject-disjoint. Test is kept unchanged, the shared subjects are removed from train, and val is
+  carved out of train by subject.)*
 
 ### ADR-004: ISO/IEC 30107-3 metrics are the primary evaluation
 - **Context:** Accuracy and AUC hide the asymmetric costs of accepting an attack and rejecting a real
@@ -162,13 +164,64 @@ Each ADR records context, decision and consequence. Superseded decisions are mar
   calls library functions. Notebooks are for EDA only.
 - **Consequence:** Tests import the same code that training and serving run.
 
+### ADR-008: Kaggle-first data workflow
+- **Context:**
+  - CelebA-Spoof is available as a hosted mirror on Kaggle, where the GPU training runs.
+  - The local machine only needs the code.
+  - The dataset license terms are not yet checked, including whether images may be redistributed.
+- **Decision:**
+  - The data never leaves Kaggle. Images and label files are read in place from the mirror at
+    `/kaggle/input/datasets/attentionlayer241/celeba-spoof-for-face-antispoofing/CelebA_Spoof_/CelebA_Spoof`.
+    They are never downloaded to a local machine or committed.
+  - The repository holds code, configs and the small `configs/splits/split_assignment.csv`.
+  - Manifests are regenerated on Kaggle by `scripts/build_manifest.py` into `data/manifests/`
+    (gitignored). They are never committed.
+  - Local tests run only on synthetic fixtures (`tests/conftest.py`).
+- **Consequence:**
+  - Anything that needs real images or labels runs on Kaggle: manifest build, EDA, evaluation, and
+    the quantization parity check.
+  - The split can be reproduced from the committed assignment file and `configs/data.yaml`, without
+    the manifests.
+  - Counts measured on Kaggle enter the docs with a provenance line and stay marked as not yet
+    reproduced in-repo until an in-repo run prints them (`RULES.md` §6 item 7).
+
+### ADR-009: Official-split defects and how they are handled
+- **Context:** checking the mirror's `intra_test` protocol found two defects. Counts are in
+  `SCHEMA.md` §1.2, externally measured.
+  1. **Not subject-disjoint.** Subjects `5028`, `7332` and `9735` appear in both the official train
+     and test splits, in the label files and on disk. No image path appears in both.
+  2. **Label/path conflicts.** 2,022 images stored under `train/*/live/` carry index 43 == 1
+     (spoof). The test split has no such conflicts.
+- **Decision:**
+  1. **The official test split is never modified**, so results stay comparable to published work.
+     This is a hard invariant: `ensure_test_untouched` refuses any build that would drop or relabel
+     a test row.
+  2. **The 3 shared subjects are removed from train only** (`data.excluded_subjects`). Validation is
+     carved out of the remaining train subjects by subject:
+     - 10% of subjects (`split.val_fraction`), seeded;
+     - stratified by spoof-image fraction, so the live/spoof ratio stays close across train and val.
+
+     `validate_splits` enforces the disjointness invariant everywhere a split is produced or loaded.
+  3. **Conflicting rows** are handled by `data.conflict_policy`: `exclude`, `trust_label` or
+     `trust_path`. The default is **`exclude`**.
+     - Reason: visual inspection of a random sample of the conflicting images was inconclusive, so
+       neither the annotation nor the folder name could be established as authoritative.
+     - Exclusion is the conservative choice and costs 1.2% of train live images.
+     - Every manifest build logs the number of affected rows.
+- **Consequence:**
+  - Train loses the conflicting rows and the shared subjects' train images. The final train and val
+    counts come from the first Kaggle run of `scripts/build_manifest.py`.
+  - These images are called *conflicting*, because which side is wrong was not established.
+  - Changing the policy is a config change, recorded in the resolved config.
+  - Supersedes the "official vs custom split" pending decision.
+
 ### Pending decisions
 
 | Decision | Options under consideration | Decide before |
 |---|---|---|
 | Backbone | TBD | Week 2 baseline |
 | Input resolution and crop margin | TBD | Week 2 baseline |
-| Official vs custom subject-disjoint split | Official split (if disjoint) / seeded custom split | Week 1 manifest |
+| ~~Official vs custom subject-disjoint split~~ | Resolved by ADR-009 | — |
 | Auxiliary attribute heads (spoof type, illumination, environment) | Binary head only / multi-task heads | Week 4 iteration |
 | Threshold selection rule | Fixed APCER on val / fixed BPCER on val / cost-weighted | Week 5 freeze |
 | Confidence calibration | TBD | Week 5 freeze |

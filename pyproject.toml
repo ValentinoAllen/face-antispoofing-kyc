@@ -88,5 +88,14 @@ warn_unused_ignores = true
 warn_return_any = true
 
 [[tool.mypy.overrides]]
-module = ["cv2.*", "albumentations.*", "timm.*", "torchvision.*", "onnxruntime.*", "sklearn.*"]
+module = [
+    "cv2.*",
+    "albumentations.*",
+    "timm.*",
+    "torchvision.*",
+    "onnxruntime.*",
+    "sklearn.*",
+    "pandas.*", # no py.typed marker and pandas-stubs is not a dependency
+    "yaml.*",   # types-PyYAML is not a dependency
+]
 ignore_missing_imports = true

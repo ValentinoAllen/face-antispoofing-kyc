@@ -4,7 +4,7 @@
 |---|---|
 | Owner | Valentino Allen Prasetyo |
 | Status | Draft v0.1 |
-| Last updated | 2026-09-14 |
+| Last updated | 2026-09-15 |
 
 ## 1. Problem statement
 
@@ -49,9 +49,13 @@ that trade-off visible and choose it deliberately.
 
 In scope:
 
-- A binary classifier (bona fide vs attack) trained on CelebA-Spoof (625,537 images, 10,177 subjects,
-  43 attributes covering face, illumination, environment, and spoof type).
-- Subject-disjoint train/val/test splits, so no identity appears in more than one split.
+- A binary classifier (bona fide vs attack) trained on CelebA-Spoof.
+  - The paper reports 625,537 images, 10,177 subjects, and 43 attributes covering face,
+    illumination, environment and spoof type.
+  - The Kaggle mirror used here holds 561,575 images across 9,193 subjects in its `intra_test` label
+    files. This figure is externally measured and not yet reproduced in-repo (`SCHEMA.md` §1.2).
+- Subject-disjoint train/val/test splits, so no identity appears in more than one split. The
+  official test split is kept unchanged (`ARCHITECTURE.md` ADR-009).
 - Evaluation with ISO/IEC 30107-3 PAD metrics, broken down by spoof type, illumination, and
   environment.
 - Post-training quantization, export to ONNX, and CPU inference through ONNX Runtime.
@@ -127,6 +131,19 @@ class for APCER.
   detector. If the crops differ, accuracy can silently degrade. The report must evaluate using the
   inference-time detector.
 - **Compute limits.** Kaggle/Colab sessions are time-limited, so training must checkpoint and resume.
+- **Data quality of the official split.** Checking the Kaggle mirror found two defects
+  (`ARCHITECTURE.md` ADR-009, `SCHEMA.md` §1.2):
+  - The official train/test split is not subject-disjoint: subjects `5028`, `7332` and `9735` are
+    in both. They are removed from train only, and test is never modified.
+  - 2,022 train images stored under `live/` carry a spoof label. These conflicting images are
+    excluded by default, because neither the annotation nor the folder name could be shown to be
+    authoritative.
+
+  Residual risks:
+  - Annotation errors that do not show up as a path conflict cannot be detected this way, in either
+    split. They would bias both training and the reported metrics.
+  - The meaning of annotation indices 41 and 42 is not verified. Illumination and environment
+    breakdowns wait until it is confirmed.
 - **Licensing.** Dataset terms may restrict redistributing images, which affects failure galleries
   in public reports. TBD — check license terms before Week 1 manifest.
 - **Demographic performance.** BPCER may differ across groups. CelebA face attributes allow coarse
