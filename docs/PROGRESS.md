@@ -155,8 +155,6 @@ The EDA notebook is still an open Week 1 item.
     `split_sha256` are unchanged;
   - fix the `new_record` docstring.
 - Widen `requires-python` in `pyproject.toml` to include 3.12.
-- Decide whether to align the stale deadlines above (PRD §6, SCHEMA §1.1, ARCHITECTURE §4) and the
-  README Python line.
 - Set the PRD targets before the first full-train run. Write the EDA notebook.
 
 ### 2026-09-15: Baseline training pipeline and first Kaggle smoke run

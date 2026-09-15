@@ -41,7 +41,9 @@ real evaluation runs. See [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.11.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.11. Supported Python is 3.11–3.12, but
+`pyproject.toml` still enforces `>=3.11,<3.12` until that range is widened, so local setup needs
+3.11 for now.
 
 ```bash
 git clone <repo-url> && cd face-antispoofing-kyc

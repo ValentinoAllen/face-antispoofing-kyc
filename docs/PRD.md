@@ -103,13 +103,13 @@ class for APCER.
 
 | Metric | Definition | Target |
 |---|---|---|
-| APCER | Proportion of attack presentations classified as bona fide. Computed per PAI species (spoof type); the headline number is the **maximum** over species | TBD — decide before Week 2 baseline |
-| BPCER | Proportion of bona fide presentations classified as attacks | TBD — decide before Week 2 baseline |
-| ACER | (APCER + BPCER) / 2. Reported for comparability with the anti-spoofing literature. ISO/IEC 30107-3 does not endorse averaging the two error types, so ACER is never reported alone | TBD — decide before Week 2 baseline |
-| BPCER @ APCER = 1% (BPCER100) | BPCER at the threshold where APCER on the evaluated set equals 1%. This measures how much user friction it costs to hold fraud acceptance at 1% | TBD — decide before Week 2 baseline |
-| Model size | On-disk size of the quantized `.onnx` file, in MB | TBD — decide before Week 2 baseline |
-| CPU latency p50 / p95 | Wall-clock ms for one image at batch size 1: decode + face crop + preprocess + inference, excluding network. Measured after warm-up on documented CPU hardware | TBD — decide before Week 2 baseline |
-| Quantization degradation | Change in APCER, BPCER and BPCER100 between the FP32 and quantized models on the same evaluation set | TBD — decide before Week 2 baseline |
+| APCER | Proportion of attack presentations classified as bona fide. Computed per PAI species (spoof type); the headline number is the **maximum** over species | TBD — decide before the first full-train run |
+| BPCER | Proportion of bona fide presentations classified as attacks | TBD — decide before the first full-train run |
+| ACER | (APCER + BPCER) / 2. Reported for comparability with the anti-spoofing literature. ISO/IEC 30107-3 does not endorse averaging the two error types, so ACER is never reported alone | TBD — decide before the first full-train run |
+| BPCER @ APCER = 1% (BPCER100) | BPCER at the threshold where APCER on the evaluated set equals 1%. This measures how much user friction it costs to hold fraud acceptance at 1% | TBD — decide before the first full-train run |
+| Model size | On-disk size of the quantized `.onnx` file, in MB | TBD — decide before the first full-train run |
+| CPU latency p50 / p95 | Wall-clock ms for one image at batch size 1: decode + face crop + preprocess + inference, excluding network. Measured after warm-up on documented CPU hardware | TBD — decide before the first full-train run |
+| Quantization degradation | Change in APCER, BPCER and BPCER100 between the FP32 and quantized models on the same evaluation set | TBD — decide before the first full-train run |
 
 ## 7. Milestone plan (8 weeks)
 

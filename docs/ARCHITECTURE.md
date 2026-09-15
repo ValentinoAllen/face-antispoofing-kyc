@@ -98,8 +98,10 @@ Open items:
 - **Getting the dataset onto Kaggle/Colab:** resolved by ADR-008. A hosted mirror on Kaggle is used
   in place. Whether the dataset license permits using that hosted copy is still open (see
   `PROGRESS.md`).
-- **Checkpoint handoff** between Kaggle/Colab and local (W&B artifacts vs downloaded output). TBD —
-  decide before Week 2 baseline.
+- **Checkpoint handoff** between Kaggle/Colab and local (W&B artifacts vs downloaded output).
+  - Checkpoints are never committed. A run meant to be kept is saved as a Kaggle notebook version,
+    so its `/kaggle/working` output, including the checkpoint, persists (`SCHEMA.md` §3).
+  - Handoff to local for ONNX export: TBD — decide before Week 6 ONNX export.
 
 ## 5. Technical decisions (ADR log)
 

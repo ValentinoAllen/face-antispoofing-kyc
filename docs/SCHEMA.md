@@ -56,7 +56,9 @@ The index layout is defined in code only in `antispoof.data.labels`.
   - live rows in either split, because the report counts only `spoof/` rows.
 
   Asserting the convention at build time could therefore still abort a build on rows it was never
-  checked against. TBD — decide before Week 2 baseline.
+  checked against. **Decision (owner, 2026-09-16):** every manifest build reports the violation
+  counts, and the check becomes a hard assertion once a Kaggle build shows zero violations. Neither
+  is implemented yet (`PROGRESS.md`).
 
 ### 1.1.1 Measured code distributions (indices 40–42)
 
