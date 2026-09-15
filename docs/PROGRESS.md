@@ -3,7 +3,8 @@
 ## Current status
 
 The baseline training pipeline is committed and has one recorded Kaggle smoke run, whose numbers
-are not a model-quality estimate. The EDA notebook is still an open Week 1 item.
+are not a model-quality estimate. The seven doc gaps found after that run are closed (`d6e2c3c`).
+The EDA notebook is still an open Week 1 item.
 - **Code:** `antispoof.data` holds the verified annotation layout and code convention, the config
   loader, the manifest builder, the subject-level split with its invariants and the build
   orchestration. It also holds `ManifestDataset`, `make_subset`, `read_manifest` and the baseline
@@ -23,22 +24,34 @@ are not a model-quality estimate. The EDA notebook is still an open Week 1 item.
   - Trained 1 epoch on a 4,000-image train subset; evaluated on a 2,000-image val subset (654 live,
     1,346 spoof) at a fixed threshold of 0.5.
   - Pooled APCER 1.86% (25/1,346), BPCER 1.53% (10/654), pooled ACER 1.69%.
-  - The repeat run `20260915-153137-baseline` gave identical metrics.
+  - The other run, `20260915-153137-baseline`, was launched first (by `created_at`) and gave
+    identical metrics. Its epoch took 55.8 s (71.7 train images/s) against 41.0 s for
+    `20260915-153606-baseline`. This is consistent with a cold file cache on the first pass over the
+    images; it was not measured. 71.7 images/s is therefore the more realistic throughput for a
+    first pass over unseen images.
   - Both records are in `reports/runs/`; the checkpoints stayed on Kaggle.
+- **Run records:** training writes `<output-dir>/<run_id>/` on Kaggle. The owner copies
+  `record.json` and `resolved_config.json` into `reports/runs/<run_id>/` and commits them with the
+  ledger row. Checkpoints and predictions are not committed; a run to be kept is saved as a Kaggle
+  notebook version (`docs/SCHEMA.md` §3, `docs/EXPERIMENTS.md`). The split's identity is
+  `split_sha256`; there are no sidecar files.
+- **Environment:** supported Python is 3.11–3.12. Kaggle, with its preinstalled torch and timm via
+  `PYTHONPATH=src`, is the reference environment for every run that produces numbers, and each
+  record's `environment` block is the source of truth for versions. `pyproject.toml` still enforces
+  Python <3.12, and `uv.lock` pins different torch and timm versions than Kaggle's.
 - **Not implemented:** BPCER@APCER=1%, per-species APCER, a threshold fitted on val, face crop,
-  augmentation, and any test evaluation.
+  augmentation, any test evaluation, `validate_attack_codes` violation counts in the build, and
+  manifest SHA-256s in the run record.
 - **Unverified:**
   - A capture-source shortcut is not ruled out.
-  - The Kaggle environment (Python 3.12.13, torch 2.10.0+cu128, timm 1.0.26) differs from
-    `pyproject.toml` (Python <3.12) and `uv.lock` (torch 2.14.0, timm 1.0.29).
   - The SCHEMA §1.2 directory-listing checks are still externally measured.
   - Codes on the 2,022 conflicting train rows and on live rows are unmeasured, and val's code
     distribution is not printed.
 - **Known risks:** covariate shift between the train and test attack populations (`docs/PRD.md`
   §8). Val and test ACER are not directly comparable, and per-condition test cells are small.
-- **Next step:** fix the seven doc gaps listed in the latest session log. Then design the Week 2
-  evaluation: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and a check for the
-  capture-source shortcut.
+- **Next step:** check for the capture-source shortcut (how to check it is still TBD). Then design
+  the Week 2 evaluation: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and the PRD §8
+  consequences (a)–(c).
 
 ## Milestones
 
@@ -69,6 +82,82 @@ are not a model-quality estimate. The EDA notebook is still an open Week 1 item.
   write-up
 
 ## Session log
+
+### 2026-09-16: Seven doc gaps closed from owner decisions
+
+**Done**
+- Docs-only session, committed as `d6e2c3c`. No code, config or run record changed, and nothing
+  under `data/` was read.
+- `docs/SCHEMA.md`:
+  - §3 path: records are written to `<output-dir>/<run_id>/` on Kaggle. The owner copies
+    `record.json` and `resolved_config.json` into `reports/runs/<run_id>/` and commits them with the
+    ledger row. `checkpoint.pt` and `predictions.csv` are not committed; a run to be kept is saved
+    as a Kaggle notebook version.
+  - §3 table: added `what_changed`, `data_subsets`, `training_epochs`, `error` (failed or aborted
+    runs only), `metrics.apcer_pooled`, `metrics.acer_pooled`, `metrics.n_attack_accepted`,
+    `metrics.n_bona_fide_rejected`, and one row per `environment` key, including `timm` and
+    `deterministic_algorithms`. Types and nullability were taken from `antispoof.training.run`,
+    `antispoof.training.reproducibility`, `EpochStats`, `SplitSummary` and the committed records.
+  - `split_sha256` is documented as the SHA-256 of `configs/splits/split_assignment.csv`.
+  - Owner decision: both sidecars (`split_assignment.meta.yaml` in §2, `manifest.meta.json` in §1.3)
+    were removed; a file's SHA-256 is its identity.
+- `docs/EXPERIMENTS.md`: "How to log a run" describes the copy-and-commit workflow. A note above
+  the table says the APCER and ACER columns are the ISO/IEC 30107-3 worst case over PAI species and
+  that pooled values need the "(pooled)" suffix. Existing rows were not edited.
+- `docs/ARCHITECTURE.md`:
+  - §1 Image I/O: Pillow decodes, and torchvision resizes and normalizes with the interpolation and
+    mean/std from timm's pretrained config. OpenCV is declared but unused.
+  - §1 Language row and a "superseded in part" note on ADR-001: the Python/Kaggle decision,
+    including that `pyproject.toml` still enforces <3.12.
+  - §3: the real `scripts/train.py` command, and the list of scripts that exist.
+- `docs/RULES.md` §2: machine-specific paths live in `configs/data.yaml` and the `scripts/train.py`
+  path flags. The per-environment config was dropped.
+- `docs/PROGRESS.md` open questions:
+  - `validate_attack_codes` decided: every build reports violation counts, and the check becomes a
+    hard assertion after a Kaggle build shows zero violations.
+  - Sidecar keys closed.
+  - Bounding-box deadline is now "before the first run with face crop".
+  - PRD targets deadline is now "before the first full-train run", because the smoke numbers are
+    not interpretable until the capture-source shortcut is checked and targets must not be fitted to
+    them.
+  - Python/Kaggle decided.
+- Recorded the owner's reading of the epoch times in Current status: the first run's slower epoch
+  is consistent with a cold file cache.
+- Checks on the docs:
+  - A Python script over both `reports/runs/*/record.json` files found every key, plus `error`, in
+    SCHEMA §3.
+  - `git grep` finds the sidecar files named only in the struck open question, older session-log
+    text and the `run.py` docstring.
+  - `git diff` of `docs/EXPERIMENTS.md` removed no table row.
+
+**Broke / not verified**
+- ruff, mypy and pytest were not run (docs only).
+- The cold-cache explanation was not measured.
+- The copy-and-commit workflow and the `PYTHONPATH=src` setup were not exercised on Kaggle this
+  session. Whether the 2026-09-15 runs used `PYTHONPATH=src` is not recorded.
+- Left untouched, because the owner's answer on knock-on edits named only the ARCHITECTURE Python
+  row:
+  - `docs/PRD.md` §6 target cells still say "decide before Week 2 baseline";
+  - `docs/SCHEMA.md` §1.1 still has asserting `validate_attack_codes` as TBD before the Week 2
+    baseline;
+  - `docs/ARCHITECTURE.md` §4 checkpoint handoff is still TBD before the Week 2 baseline.
+- Also still stale: the `new_record` docstring in `src/antispoof/training/run.py` says the split
+  sidecar does not exist yet, and `README.md` says Python 3.11.
+
+**Next**
+- Check for the capture-source shortcut; decide how first.
+- Week 2 evaluation design: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and the PRD
+  §8 consequences (a)–(c).
+- Code session:
+  - make the manifest build report `validate_attack_codes` violation counts;
+  - store the SHA-256 of each manifest file a run reads (`manifest_train.csv`, `manifest_val.csv`)
+    in the run record, so a change in the Kaggle mirror is caught even when `git_sha` and
+    `split_sha256` are unchanged;
+  - fix the `new_record` docstring.
+- Widen `requires-python` in `pyproject.toml` to include 3.12.
+- Decide whether to align the stale deadlines above (PRD §6, SCHEMA §1.1, ARCHITECTURE §4) and the
+  README Python line.
+- Set the PRD targets before the first full-train run. Write the EDA notebook.
 
 ### 2026-09-15: Baseline training pipeline and first Kaggle smoke run
 
