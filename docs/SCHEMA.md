@@ -49,21 +49,29 @@ The index layout is defined in code only in `antispoof.data.labels`.
   explicitly.
 - `antispoof.data.labels.validate_attack_codes` checks one vector. On a spoof vector (index 43 ==
   1) it rejects `0` at any of indices 40–42. On a live vector it rejects any non-zero value there.
-- The builder does not call the validator yet. The distributions in §1.1.1 cover only official-train
-  images under `spoof/`. The codes on the 2,022 conflicting train rows (§1.2) and on the test split
-  have not been measured, so asserting the convention at build time could abort a build on rows it
-  was never checked against. TBD — decide before Week 2 baseline.
+- The builder does not call the validator yet. The build report (§1.1.1) shows that no `spoof/` row
+  in official train (after the conflict policy) or in test has code `0` at indices 40–42. Two
+  populations are still unmeasured:
+  - the 2,022 conflicting train rows (§1.2), which `exclude` drops before the codes are counted;
+  - live rows in either split, because the report counts only `spoof/` rows.
+
+  Asserting the convention at build time could therefore still abort a build on rows it was never
+  checked against. TBD — decide before Week 2 baseline.
 
 ### 1.1.1 Measured code distributions (indices 40–42)
 
-> **Externally measured, not yet reproduced in-repo.**
-> - Provenance: measured by the owner on Kaggle, 2026-09-15, against the mirror and the
->   `intra_test` `train_label.json` above, over the 329,921 official-train images whose path
->   contains `spoof/`.
-> - To be reproduced by `python scripts/build_manifest.py --config configs/data.yaml`. Its build
->   report now prints these counts under "Attack codes on rows under spoof/" (`RULES.md` §6 item 7).
->   The report counts `spoof/` rows after the conflict policy. Under `exclude` this is the same
->   population, because all 2,022 train conflicts are stored under `live/` (§1.2).
+> **Reproduced in-repo on 2026-09-15 by `scripts/build_manifest.py`.**
+> - The official-train counts were first measured by the owner on Kaggle on 2026-09-15, against the
+>   mirror and the `intra_test` `train_label.json` above.
+> - The owner's second Kaggle run of `python scripts/build_manifest.py --config configs/data.yaml`,
+>   on 2026-09-15, printed these counts under "Attack codes on rows under spoof/, after conflict
+>   policy". As reported by the owner, its official-train counts matched every count previously
+>   recorded here. The same run printed the test counts for the first time (`RULES.md` §6 item 7).
+> - Population: rows whose path contains `spoof/`, after `conflict_policy: exclude`, before val is
+>   carved out. For train this is the same 329,921 images as the original measurement, because all
+>   2,022 train conflicts are stored under `live/` (§1.2).
+
+**Official train** (329,921 `spoof/` rows):
 
 | Index | Column | Distinct codes | Images per code |
 |---|---|---|---|
@@ -71,10 +79,27 @@ The index layout is defined in code only in `antispoof.data.labels`.
 | 41 | `illumination` | 4 | 1: 194,589 · 2: 66,342 · 3: 35,101 · 4: 33,889 |
 | 42 | `environment` | 2 | 1: 251,685 · 2: 78,236 |
 
-- Each distribution sums to 329,921. No image in this population has code `0`.
-- **Skew:** illumination code 1 accounts for 194,589 of the 329,921 images (59%). Evaluation broken
-  down by illumination will have much smaller samples for codes 2–4 (`PRD.md` §8).
-- The test-split distributions have not been measured.
+**Official test** (47,247 `spoof/` rows):
+
+| Index | Column | Distinct codes | Images per code |
+|---|---|---|---|
+| 40 | `spoof_type` | 10 | 1: 3,600 · 2: 5,421 · 3: 6,083 · 4: 4,287 · 5: 6,097 · 6: 3,530 · 7: 6,477 · 8: 3,659 · 9: 4,483 · 10: 3,610 |
+| 41 | `illumination` | 4 | 1: 35,119 · 2: 5,971 · 3: 2,461 · 4: 3,696 |
+| 42 | `environment` | 2 | 1: 40,722 · 2: 6,525 |
+
+- Each train distribution sums to 329,921 and each test distribution to 47,247. No `spoof/` row in
+  either population has code `0`.
+- **Covariate shift between train and test.** Shares of `spoof/` rows, computed from the counts
+  above:
+  - `spoof_type` is near-uniform in train but not in test: code 7 is 8.8% of train vs 13.7% of
+    test; code 10 is 12.3% vs 7.6%.
+  - `illumination` is more concentrated in test: code 1 is 59.0% vs 74.3%; code 3 is 10.6% vs 5.2%.
+  - `environment` likewise: code 1 is 76.3% vs 86.2%.
+- **Small cells on test:** illumination code 3 has only 2,461 test spoof images. Per-condition test
+  results need confidence intervals.
+- Consequences for evaluation are recorded in `PRD.md` §8.
+- Val is carved from official train by subject (§2). The build does not print val's own code
+  distribution.
 
 ### 1.2 Measured counts (`intra_test`, this mirror)
 
@@ -130,8 +155,10 @@ The same splits, counted by **index 43**:
   subjects. The 3 excluded subjects account for the 216-row difference between that figure and
   train + val.
 - The live fraction of train and val agrees, so the stratification works. The lower live fraction in
-  test is a property of the official test split, which is not modified. The consequences for
-  threshold calibration are recorded in `PRD.md` §8 and `PROGRESS.md` open questions.
+  test is a property of the official test split, which is not modified. APCER and BPCER are
+  class-conditional, so this class-mix difference alone does not move them at a fixed threshold.
+  The evaluation risk is the difference in attack population between train and test (§1.1.1,
+  `PRD.md` §8).
 - The subject assignment is committed as `configs/splits/split_assignment.csv` (§2).
 
 ### 1.3 Columns

@@ -7,19 +7,23 @@ resulting split assignment is committed. The EDA notebook is the remaining Week 
 - **Code:** `antispoof.data` holds the verified annotation layout (indices 40 spoof type, 41
   illumination, 42 environment, 43 label; codes at 40–42 are 1-indexed with `0` = not applicable),
   the validator `validate_attack_codes`, the config loader, the manifest builder, the subject-level
-  split with its invariants, and the build orchestration. The build report now also prints per-code
-  counts for indices 40–42.
-- **Checks:** ruff, mypy and `uv run pytest` (104 tests) pass locally.
-- **Dataset:** `scripts/build_manifest.py` reproduced every count in `docs/SCHEMA.md` §1.2 on Kaggle
-  on 2026-09-15 and produced the split: train 442,859 rows / 7,370 subjects, val 49,308 / 819, test
-  67,170 / 1,004. `configs/splits/split_assignment.csv` is committed and tested.
-- **Unverified:** the index 40–42 distributions are externally measured, and the build report that
-  prints them has not yet run on Kaggle. The directory-listing checks in SCHEMA §1.2 are still
-  externally measured. Manifests on Kaggle carry the old `attr_41`/`attr_42` column names.
-- **Known risks:** illumination code 1 is 59% of official-train spoof images, and the live fraction
-  is 29.7% in test vs 33.0% train / 32.7% val (`docs/PRD.md` §8).
-- **Next step:** rerun `scripts/build_manifest.py` on Kaggle to regenerate the manifests under the new
-  column names and reconcile the printed code counts with SCHEMA §1.1.1; then the EDA notebook.
+  split with its invariants, and the build orchestration. The build report prints per-code counts
+  for indices 40–42 on `spoof/` rows of official train and test.
+- **Checks:** ruff, mypy and `uv run pytest` (104 tests) passed in the last session that changed
+  code. They have not been rerun since, because only docs changed.
+- **Dataset:** two owner runs of `scripts/build_manifest.py` on Kaggle (2026-09-15) reproduced every
+  count in `docs/SCHEMA.md` §1.2 and the official-train index 40–42 distributions in §1.1.1. The
+  second run also printed the test-split distributions. Split: train 442,859 rows / 7,370 subjects,
+  val 49,308 / 819, test 67,170 / 1,004. `configs/splits/split_assignment.csv` is committed and
+  tested.
+- **Unverified:** the directory-listing checks in SCHEMA §1.2 are still externally measured. Codes
+  on the 2,022 conflicting train rows and on live rows are unmeasured, and val's code distribution
+  is not printed. The manifests written by the second run have not been inspected.
+- **Known risks:** covariate shift between the train and test attack populations in spoof type,
+  illumination and environment (`docs/PRD.md` §8). Val and test ACER are not directly comparable,
+  and per-condition test cells are small (illumination code 3: 2,461 test spoof images).
+- **Next step:** the EDA notebook; then the Week 2 evaluation design, which must address the three
+  covariate-shift consequences in PRD §8.
 
 ## Milestones
 
@@ -43,6 +47,53 @@ resulting split assignment is committed. The EDA notebook is the remaining Week 
   write-up
 
 ## Session log
+
+### 2026-09-15: Second Kaggle build recorded; covariate shift replaces prior-shift risk
+
+**Done**
+- Recorded the owner's second Kaggle run of `scripts/build_manifest.py` (2026-09-15, run by the
+  owner outside this session). As reported by the owner, all figures were printed by repo code,
+  and the official-train index 40–42 counts matched SCHEMA §1.1.1. The run also printed the test
+  counts for the first time:
+  - test `spoof/` rows = 47,247
+  - `spoof_type`: 1=3,600 2=5,421 3=6,083 4=4,287 5=6,097 6=3,530 7=6,477 8=3,659 9=4,483 10=3,610
+  - `illumination`: 1=35,119 2=5,971 3=2,461 4=3,696
+  - `environment`: 1=40,722 2=6,525
+- Checked in this session with a Python one-liner over the recorded counts: each test distribution
+  sums to 47,247. The owner's train-vs-test shares match the counts (code 7: 8.81% vs 13.71%;
+  code 10: 12.31% vs 7.64%; illumination 1: 58.98% vs 74.33%; illumination 3: 10.64% vs 5.21%;
+  environment 1: 76.29% vs 86.19%).
+- Read `src/antispoof/data/build.py` to confirm what the report counts. `count_attack_codes` covers
+  `spoof/` rows of official train after the conflict policy (before val is carved out) and of test.
+  A code `0` would be listed if present. Live rows and val are not counted.
+- Docs (no code changes; nothing under `data/` read or written):
+  - `docs/SCHEMA.md` §1.1: validator note. No `spoof/` row in official train or test has code `0`.
+    The conflicting train rows and live rows remain unmeasured.
+  - `docs/SCHEMA.md` §1.1.1: the external mark is replaced by "reproduced in-repo" provenance. Adds
+    the test table, the train-vs-test covariate shift, the small-cell note, and the fact that val's
+    distribution is not printed.
+  - `docs/SCHEMA.md` §1.2: the live-fraction note is corrected. APCER/BPCER are class-conditional,
+    and the risk is the attack-population difference.
+  - `docs/PRD.md` §8: the skew entry now carries the test share. The prior-shift entry is replaced
+    by a covariate-shift entry with the Week 2 consequences (a)–(c) and the correction.
+  - `docs/PROGRESS.md`: current status and open questions.
+
+**Broke / not verified**
+- ruff, mypy and `uv run pytest` were not run this session (docs only).
+- Only the test counts from the second run were seen in this session. The match of the train
+  counts rests on the owner's report.
+- Codes on the 2,022 conflicting train rows and on live rows are unmeasured. Val's code
+  distribution is not printed by the build, so consequence (c) cannot yet be checked against val.
+- The manifests written by the second run were not inspected (e.g. the renamed columns).
+- The SCHEMA §1.2 directory-listing checks are still externally measured.
+
+**Next**
+- EDA notebook (the remaining Week 1 item).
+- Week 2 evaluation design: report val and test ACER with the split named, confidence intervals on
+  per-condition test breakdowns, and a check of any val/test gap against the distribution
+  difference.
+- Decide whether the build report should also print val's code distribution, which (c) needs.
+- Decide whether the build asserts `validate_attack_codes`.
 
 ### 2026-09-15: Verified indices 41/42, first Kaggle build reconciled, split committed
 
@@ -217,18 +268,36 @@ resulting split assignment is committed. The EDA notebook is the remaining Week 
   **Answered:** index 41 is illumination (4 codes) and index 42 is environment (2 codes).
   - Measured by the owner on 2026-09-15 over the 329,921 official-train `spoof/` images.
   - Codes are 1-indexed. `0` means not applicable and occurs only on live rows.
-  - Distributions are in SCHEMA.md §1.1.1: externally measured, to be reconciled on the next build.
+  - Distributions are in SCHEMA.md §1.1.1, reproduced in-repo by the second Kaggle build on
+    2026-09-15.
 - Names for the index-40 spoof type codes. There are 10 codes (SCHEMA.md §1.1.1), but what any of
   them means is not known. The illumination and environment code names are not recorded either.
   Decide before the Week 3 error analysis.
-- Should the build assert `validate_attack_codes`? Codes on the 2,022 conflicting train rows and on
-  the test split have not been measured. Decide before the Week 2 baseline.
-- Live/spoof prior shift between val and test: the live fraction is 33.0% in train and 32.7% in val,
-  but 29.7% in test (SCHEMA.md §1.2).
-  - The shift comes from the official test split, which is not modified.
-  - A threshold calibrated on val is not guaranteed to keep its operating point on test (PRD.md §8).
-  - Eval must report the operating point it was calibrated at and the split it was calibrated on.
-  - How to handle it is part of the Week 2 evaluation design; no fix is chosen.
+- ~~Reconcile the externally measured index 40–42 distributions (SCHEMA.md §1.1.1) with the build
+  report.~~
+  **Answered:** the second Kaggle run of `scripts/build_manifest.py` on 2026-09-15 reproduced them
+  in-repo, as reported by the owner.
+- ~~Codes at indices 40–42 on the test split.~~
+  **Answered:** printed by the same run (SCHEMA.md §1.1.1).
+  - 47,247 test `spoof/` rows carry 10 / 4 / 2 distinct codes, and none has code `0`.
+  - The distributions differ materially from train (covariate shift, PRD.md §8).
+- Should the build assert `validate_attack_codes`? Codes on the 2,022 conflicting train rows are
+  still unmeasured. The build report counts only `spoof/` rows, so codes on live rows are unmeasured
+  too. Decide before the Week 2 baseline.
+- ~~Live/spoof prior shift between val and test: the live fraction is 33.0% in train and 32.7% in
+  val, but 29.7% in test (SCHEMA.md §1.2). A threshold calibrated on val is not guaranteed to keep
+  its operating point on test.~~
+  **Corrected:** APCER and BPCER are class-conditional and are not moved by class mix alone at a
+  fixed threshold. The real risk is the covariate shift below.
+- Covariate shift between the train and test attack populations (SCHEMA.md §1.1.1, PRD.md §8). The
+  Week 2 evaluation design must:
+  - (a) report val and test ACER always together, each with its split named;
+  - (b) report confidence intervals, not bare point estimates, for per-condition test breakdowns
+    (illumination code 3 has only 2,461 test spoof images);
+  - (c) check any val/test ACER gap against the distribution difference before attributing it to
+    the model.
+
+  Decide the design before the Week 2 baseline.
 - Bounding-box format.
   - One observed clue: a file named `004046_BB.txt` at the dataset root, which suggests per-image
     `{image_id}_BB.txt` sidecar files. Unverified.
