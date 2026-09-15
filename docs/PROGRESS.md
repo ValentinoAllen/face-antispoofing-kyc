@@ -2,28 +2,43 @@
 
 ## Current status
 
-The Week 1 manifest builder and subject-disjoint split have run on the real Kaggle mirror, and the
-resulting split assignment is committed. The EDA notebook is the remaining Week 1 item.
-- **Code:** `antispoof.data` holds the verified annotation layout (indices 40 spoof type, 41
-  illumination, 42 environment, 43 label; codes at 40–42 are 1-indexed with `0` = not applicable),
-  the validator `validate_attack_codes`, the config loader, the manifest builder, the subject-level
-  split with its invariants, and the build orchestration. The build report prints per-code counts
-  for indices 40–42 on `spoof/` rows of official train and test.
-- **Checks:** ruff, mypy and `uv run pytest` (104 tests) passed in the last session that changed
-  code. They have not been rerun since, because only docs changed.
-- **Dataset:** two owner runs of `scripts/build_manifest.py` on Kaggle (2026-09-15) reproduced every
-  count in `docs/SCHEMA.md` §1.2 and the official-train index 40–42 distributions in §1.1.1. The
-  second run also printed the test-split distributions. Split: train 442,859 rows / 7,370 subjects,
-  val 49,308 / 819, test 67,170 / 1,004. `configs/splits/split_assignment.csv` is committed and
-  tested.
-- **Unverified:** the directory-listing checks in SCHEMA §1.2 are still externally measured. Codes
-  on the 2,022 conflicting train rows and on live rows are unmeasured, and val's code distribution
-  is not printed. The manifests written by the second run have not been inspected.
-- **Known risks:** covariate shift between the train and test attack populations in spoof type,
-  illumination and environment (`docs/PRD.md` §8). Val and test ACER are not directly comparable,
-  and per-condition test cells are small (illumination code 3: 2,461 test spoof images).
-- **Next step:** the EDA notebook; then the Week 2 evaluation design, which must address the three
-  covariate-shift consequences in PRD §8.
+The baseline training pipeline is committed and has one recorded Kaggle smoke run, whose numbers
+are not a model-quality estimate. The EDA notebook is still an open Week 1 item.
+- **Code:** `antispoof.data` holds the verified annotation layout and code convention, the config
+  loader, the manifest builder, the subject-level split with its invariants and the build
+  orchestration. It also holds `ManifestDataset`, `make_subset`, `read_manifest` and the baseline
+  transform (resize and normalize with the timm pretrained stats; no face crop, no augmentation).
+  `antispoof.models.factory` builds a single-logit timm model, and `antispoof.eval.pad_metrics`
+  computes pooled APCER, BPCER and ACER. `antispoof.training` holds the experiment config loader,
+  seeding and provenance helpers, the training loop and the run orchestration behind
+  `scripts/train.py` with `configs/baseline.yaml`.
+- **Checks:** ruff, mypy (19 source files) and `uv run pytest` (165 tests) passed before commit
+  `6f368c0`. They have not been rerun since, because only run records and docs changed.
+- **Dataset:** the owner's third Kaggle build (2026-09-15) printed counts equal to every count in
+  `docs/SCHEMA.md` §1.2 and §1.1.1. Split: train 442,859 rows / 7,370 subjects, val 49,308 / 819,
+  test 67,170 / 1,004. The committed `configs/splits/split_assignment.csv` is the one the runs used:
+  its SHA-256 equals the records' `split_sha256`.
+- **Runs:** `20260915-153606-baseline` is in `docs/EXPERIMENTS.md`.
+  - Run at `6f368c0` on CUDA from a clean tree.
+  - Trained 1 epoch on a 4,000-image train subset; evaluated on a 2,000-image val subset (654 live,
+    1,346 spoof) at a fixed threshold of 0.5.
+  - Pooled APCER 1.86% (25/1,346), BPCER 1.53% (10/654), pooled ACER 1.69%.
+  - The repeat run `20260915-153137-baseline` gave identical metrics.
+  - Both records are in `reports/runs/`; the checkpoints stayed on Kaggle.
+- **Not implemented:** BPCER@APCER=1%, per-species APCER, a threshold fitted on val, face crop,
+  augmentation, and any test evaluation.
+- **Unverified:**
+  - A capture-source shortcut is not ruled out.
+  - The Kaggle environment (Python 3.12.13, torch 2.10.0+cu128, timm 1.0.26) differs from
+    `pyproject.toml` (Python <3.12) and `uv.lock` (torch 2.14.0, timm 1.0.29).
+  - The SCHEMA §1.2 directory-listing checks are still externally measured.
+  - Codes on the 2,022 conflicting train rows and on live rows are unmeasured, and val's code
+    distribution is not printed.
+- **Known risks:** covariate shift between the train and test attack populations (`docs/PRD.md`
+  §8). Val and test ACER are not directly comparable, and per-condition test cells are small.
+- **Next step:** fix the seven doc gaps listed in the latest session log. Then design the Week 2
+  evaluation: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and a check for the
+  capture-source shortcut.
 
 ## Milestones
 
@@ -37,6 +52,13 @@ resulting split assignment is committed. The EDA notebook is the remaining Week 
   - [ ] EDA notebook
 - [ ] **Week 2 (2026-09-21 → 2026-09-27):** PRD targets set, PAD metrics + tests, transforms,
   dataset class, config loader, baseline training run
+  - [ ] PRD targets set
+  - [ ] PAD metrics + tests (pooled APCER/BPCER/ACER with tests, 2026-09-15; BPCER@APCER=1% and
+    per-species APCER not yet)
+  - [ ] Transforms (baseline resize + normalize, 2026-09-15; no face crop, no augmentation)
+  - [x] Dataset class (2026-09-15; `ManifestDataset`, `make_subset`)
+  - [x] Config loader (2026-09-15; `antispoof.training.config`)
+  - [ ] Baseline training run (smoke run `20260915-153606-baseline` on 4k/2k subsets, 2026-09-15)
 - [ ] **Week 3 (2026-09-28 → 2026-10-04):** evaluation report generator, error analysis v1
 - [ ] **Week 4 (2026-10-05 → 2026-10-11):** hypothesis-driven model iteration
 - [ ] **Week 5 (2026-10-12 → 2026-10-18):** model freeze, threshold selection, confidence definition
@@ -47,6 +69,98 @@ resulting split assignment is committed. The EDA notebook is the remaining Week 
   write-up
 
 ## Session log
+
+### 2026-09-15: Baseline training pipeline and first Kaggle smoke run
+
+**Done**
+- Built the baseline pipeline, committed as `6f368c0`:
+  - `src/antispoof/data/dataset.py` (`ManifestDataset`, `make_subset`), `read_manifest` in
+    `src/antispoof/data/manifest.py`, and `src/antispoof/data/transforms.py`;
+  - `src/antispoof/models/factory.py` and `src/antispoof/eval/pad_metrics.py`;
+  - `src/antispoof/training/config.py`, `reproducibility.py`, `loop.py` and `run.py`;
+  - `configs/baseline.yaml` and `scripts/train.py`;
+  - tests: `tests/test_dataset.py`, `test_pad_metrics.py`, `test_train_config.py`,
+    `test_reproducibility.py` and `test_training.py`, plus a `write_images` fixture in
+    `tests/conftest.py`.
+- Owner decision: the run record stores pooled rates under the extra keys `metrics.apcer_pooled`
+  and `metrics.acer_pooled`. `apcer_max`, `acer` and `apcer_per_species` stay null.
+- Checks before `6f368c0`: `ruff format --check` (40 files), `ruff check`, `mypy` (no issues in 19
+  source files) and `uv run pytest` (165 passed).
+- Overfit test:
+  - Checked its criterion in a scratch script on seeds 0–9. All passed, with final losses at most
+    0.0091.
+  - Added an absolute bound to the test (final loss < 0.05).
+- Ran `scripts/train.py` end to end on synthetic images in a throwaway git repo, with 2 DataLoader
+  workers. The status was completed and all four run files were written. The metrics are synthetic
+  and meaningless.
+- Two attempts to run the Kaggle command on the local Mac failed with
+  `ModuleNotFoundError: No module named 'antispoof'` (plain `python`, outside the project
+  environment). Nothing was written.
+- Recorded the owner's Kaggle work (2026-09-15, outside this session):
+  - A manifest rebuild. Its printed counts equal every count in `docs/SCHEMA.md` §1.2 and §1.1.1,
+    compared in this session against the pasted output. The owner's own check printed
+    `split_assignment identical to committed: True`.
+  - Two training runs, `20260915-153137-baseline` and `20260915-153606-baseline`, both at
+    `6f368c0` with `git_dirty: false` on CUDA. The owner copied their `record.json` and
+    `resolved_config.json` into `reports/runs/`; no checkpoints were copied.
+- Diffed the two records key by key:
+  - Exactly five fields differ: `run_id`, `created_at`, `artifacts.checkpoint`,
+    `training_epochs[0].wall_time_s` (55.77 s vs 41.00 s) and `training_epochs[0].images_per_s`
+    (71.72 vs 97.56).
+  - All metrics and the mean train loss are identical.
+  - The two resolved configs are byte-identical.
+- Checked `20260915-153606-baseline`:
+  - `config_hash`, recomputed from its `resolved_config.json` and again from the committed configs
+    with the manifest-dir override, equals the record's.
+  - `split_sha256` equals the SHA-256 of `configs/splits/split_assignment.csv`.
+  - `git_sha` is `6f368c0`.
+  - `format_ledger_row` on the copied record reproduces the row printed on Kaggle.
+- `docs/EXPERIMENTS.md`: one row for `20260915-153606-baseline`.
+  - Metrics: pooled APCER 1.86%, BPCER 1.53%, pooled ACER 1.69%, BPCER@APCER=1% —.
+  - The notes say the repeat run matched exactly and that the row is not a model-quality estimate.
+  - Committed with both record folders as `5500cad`.
+  - On the owner's instruction, `20260915-153137-baseline` has no row of its own; the note covers
+    it.
+
+**Broke / not verified**
+- A capture-source shortcut is not ruled out, so the smoke-run metrics are not a model-quality
+  estimate.
+- Environment drift on Kaggle: Python 3.12.13, torch 2.10.0+cu128 and timm 1.0.26. By contrast,
+  `pyproject.toml` requires Python <3.12 and `uv.lock` pins torch 2.14.0 and timm 1.0.29. How the
+  package was made importable on Kaggle is not recorded.
+- Why two Kaggle runs exist is not recorded. Their identical metrics are one observation under
+  `warn_only` determinism, not a guarantee.
+- Checkpoints exist only on Kaggle (`/kaggle/working/runs/...`). The checkpoint handoff is still
+  undecided (`docs/ARCHITECTURE.md` §4).
+- Not implemented: BPCER@APCER=1%, per-species APCER, a val-fitted threshold, face crop and
+  augmentation. The W&B-enabled path in `antispoof.training.run` is untested.
+- Seven doc gaps found this session are not fixed; the owner deferred them:
+  1. SCHEMA §3 and EXPERIMENTS.md step 3 put records at `reports/runs/<run_id>/`. The script
+     writes to `<output-dir>/<run_id>/`, and the owner copies them over.
+  2. SCHEMA §3 lacks the extra record keys: `what_changed`, `data_subsets`, `training_epochs`,
+     `error`, `metrics.apcer_pooled`, `metrics.acer_pooled`, `metrics.n_attack_accepted`,
+     `metrics.n_bona_fide_rejected`, `environment.timm` and `environment.deterministic_algorithms`.
+  3. SCHEMA §3 says `split_sha256` matches the split sidecar, which does not exist. The code
+     hashes `split_assignment.csv` itself.
+  4. The EXPERIMENTS.md APCER column does not say whether it is pooled or the maximum over species.
+  5. ARCHITECTURE §1 says OpenCV resizes, but the baseline uses PIL and torchvision. ARCHITECTURE
+     §3 shows an outdated `train.py` command and says only `build_manifest.py` exists.
+  6. RULES §2 describes a per-environment config included by the experiment config; none exists.
+  7. Open questions in this file marked "before the Week 2 baseline" are still open.
+- ruff, mypy and pytest were not rerun after `6f368c0`, because only run records and docs changed.
+- In one full pytest run, `test_unreadable_image_raises_naming_the_path` took 3.51 s. It did not
+  reproduce (0.01 s on rerun).
+
+**Next**
+- Fix the seven doc gaps above.
+- Decide how to check for the capture-source shortcut.
+- Week 2 evaluation design:
+  - a val-fitted threshold;
+  - BPCER@APCER=1%;
+  - per-species APCER;
+  - the PRD §8 consequences (a)–(c).
+- Decide how to handle the Kaggle Python 3.12 runtime against `requires-python` and the lockfile.
+- Set the PRD targets. Write the EDA notebook.
 
 ### 2026-09-15: Second Kaggle build recorded; covariate shift replaces prior-shift risk
 
@@ -314,7 +428,14 @@ resulting split assignment is committed. The EDA notebook is the remaining Week 
 - PRD success-metric targets (APCER, BPCER, ACER, BPCER@APCER=1%, model size, CPU latency). Decide
   before the Week 2 baseline.
 - Backbone and input resolution. Decide before the Week 2 baseline.
+  - The smoke run used `mobilenetv3_large_100` at 224 px (`configs/baseline.yaml`) as a starting
+    default, because ARCHITECTURE.md lists the backbone as TBD. This is not a decision.
 - Python version compatibility with the Kaggle/Colab runtimes. Verify before the Week 2 baseline.
+  - The Kaggle runs on 2026-09-15 used Python 3.12.13, torch 2.10.0+cu128 and timm 1.0.26
+    (run records).
+  - `pyproject.toml` requires Python >=3.11,<3.12, and `uv.lock` pins torch 2.14.0 and timm 1.0.29.
+- Capture-source shortcut: not yet ruled out (owner's note on the `20260915-153606-baseline` ledger
+  row). Until it is, no baseline metric is a model-quality estimate. How to check it is TBD.
 
 ## Blocked on
 
