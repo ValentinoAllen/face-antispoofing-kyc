@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import PIL
+import sklearn
 import timm
 import torch
 
@@ -225,8 +227,8 @@ def environment_info(device: torch.device, determinism: str) -> dict[str, str | 
         determinism: The description returned by :func:`seed_everything`.
 
     Returns:
-        ``python``, ``torch``, ``cuda`` (null on CPU-only builds), ``device`` and ``platform`` from
-        the contract, plus ``timm`` and ``deterministic_algorithms``.
+        ``python``, ``torch``, ``cuda`` (null on CPU-only builds), ``device``, ``platform``,
+        ``timm``, ``pillow``, ``sklearn`` and ``deterministic_algorithms``.
     """
     return {
         "python": platform.python_version(),
@@ -235,6 +237,8 @@ def environment_info(device: torch.device, determinism: str) -> dict[str, str | 
         "device": str(device),
         "platform": platform.platform(),
         "timm": timm.__version__,
+        "pillow": PIL.__version__,
+        "sklearn": sklearn.__version__,
         "deterministic_algorithms": determinism,
     }
 

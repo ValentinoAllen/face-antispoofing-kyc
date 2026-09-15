@@ -314,11 +314,13 @@ Enforcement:
 | `environment.device` | string | no | Device the run used |
 | `environment.platform` | string | no | `platform.platform()` |
 | `environment.timm` | string | no | `timm.__version__` |
+| `environment.pillow` | string | no | `PIL.__version__`. Pillow decodes training images and reads the headers in the metadata probe |
+| `environment.sklearn` | string | no | `sklearn.__version__`. scikit-learn fits the metadata probe's classifiers |
 | `environment.deterministic_algorithms` | string | no | Description of the determinism settings applied by `antispoof.training.reproducibility.seed_everything` |
 | `status` | string | no | `running`, `completed`, `failed` or `aborted`. `running` is written at launch; the other values when the run ends |
 | `error` | string | no | Present only when `status` is `failed` or `aborted`. `<ExceptionType>: <message>` of the exception that ended the run |
 | `data_subsets` | object | no | Keys `train` and `val`, each `{rows, subjects, live, spoof}` as integers: counts of the subset the run actually used |
-| `training_epochs` | array[object] | no | Present only when `status` is `completed`. One item per epoch: `{steps: integer, images: integer, mean_loss: number, wall_time_s: number, images_per_s: number}`. Wall time includes data loading |
+| `training_epochs` | array[object] | yes | Present only when `status` is `completed`; null for runs that do not train (the metadata probe). One item per epoch: `{steps: integer, images: integer, mean_loss: number, wall_time_s: number, images_per_s: number}`. Wall time includes data loading |
 | `eval_split` | string | yes | `val` or `test`; null until evaluated |
 | `threshold` | number | yes | Operating threshold used for the metrics, in [0, 1] |
 | `threshold_rule` | string | yes | How the threshold was chosen (e.g. `apcer_on_val`) |

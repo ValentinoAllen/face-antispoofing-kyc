@@ -1,0 +1,45 @@
+# Metadata probe: do image headers alone (no pixels) separate live from spoof?
+# Loaded by antispoof.eval.metadata_probe.load_probe_config and run by scripts/probe_metadata.py.
+# Every tunable value of the probe lives here (docs/RULES.md §2); data paths come from
+# configs/data.yaml and the script flags. Configs are immutable once a run has cited them.
+
+run:
+  # Copied into the run record and the docs/EXPERIMENTS.md row. The decision rule is fixed here,
+  # before the run.
+  hypothesis: "Header-level metadata alone (format, dimensions, file size, JPEG tables, EXIF/ICC presence; no pixels) separates live from spoof on the baseline's 4k/2k subsets. Decision rule fixed before the run, on the primary classifier's pooled val ACER: <= 5% strong header-level shortcut; >= 25% weak header-level shortcut, pixel-level cues untested; otherwise partial."
+  what_changed: "Metadata probe: no pixels, HistGradientBoosting on header features"
+  notes: "probe, not a model; same subsets and threshold as 20260915-153606-baseline"
+
+subsets:
+  # Experiment config whose data.train_subset, data.val_subset and run.seed select the rows, so the
+  # probe always reads exactly the baseline's subsets. Its eval.threshold must equal eval.threshold
+  # below.
+  config: configs/baseline.yaml
+
+features:
+  # Size-like features transformed with log1p before standardization (logistic regression only).
+  log1p: [width, height, pixel_count, file_size_bytes, bytes_per_pixel]
+
+primary:
+  # HistGradientBoostingClassifier with scikit-learn's default values written out. No tuning and no
+  # class weighting (the baseline had none). Early stopping is off so every run fits max_iter trees.
+  learning_rate: 0.1
+  max_iter: 100
+  max_leaf_nodes: 31
+  min_samples_leaf: 20
+  l2_regularization: 0.0
+  max_bins: 255
+  early_stopping: false
+
+secondary:
+  # LogisticRegression on standardized features with one-hot categoricals. No class weighting.
+  c: 1.0
+  max_iter: 1000
+  # Imputation of null numeric features (JPEG-only features on other formats): mean or median.
+  impute_strategy: median
+
+eval:
+  # A val image is classified as spoof iff P(spoof) >= threshold. Must equal the baseline's.
+  threshold: 0.5
+  # Fixed value from this file, not fitted on val.
+  threshold_rule: fixed_config

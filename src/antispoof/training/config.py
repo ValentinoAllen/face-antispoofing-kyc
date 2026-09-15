@@ -109,7 +109,7 @@ def load_train_config(path: Path) -> TrainConfig:
             f"{path}: expected exactly the top-level sections {sorted(section_types)}."
         )
     config = TrainConfig(
-        **{name: _parse_section(name, document[name], kind) for name, kind in section_types.items()}
+        **{name: parse_section(name, document[name], kind) for name, kind in section_types.items()}
     )
     validate_train_config(config)
     return config
@@ -146,7 +146,21 @@ def validate_train_config(config: TrainConfig) -> None:
         raise TrainConfigError("Invalid experiment config: " + "; ".join(problems) + ".")
 
 
-def _parse_section(name: str, section: object, section_type: Any) -> Any:
+def parse_section(name: str, section: object, section_type: Any) -> Any:
+    """Parse one config section into a dataclass, checking its keys and value types.
+
+    Args:
+        name: Section name, used in error messages.
+        section: The parsed YAML value of the section.
+        section_type: A dataclass whose fields are ``str``, ``int``, ``float`` or ``bool``.
+
+    Returns:
+        An instance of ``section_type``.
+
+    Raises:
+        TrainConfigError: If the section is not a mapping, keys are missing or unknown, or a value
+            has the wrong type.
+    """
     if not isinstance(section, dict):
         raise TrainConfigError(f"Section {name!r} must be a mapping.")
     expected = {field.name: field.type for field in fields(section_type)}

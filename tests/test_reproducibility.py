@@ -120,3 +120,20 @@ def test_format_ledger_row_follows_experiments_column_order() -> None:
 def test_format_ledger_row_flags_dirty_runs() -> None:
     row = format_ledger_row(_record(git_dirty=True))
     assert row.endswith("| git_dirty: not citable; smoke |")
+
+
+def test_environment_info_records_library_versions() -> None:
+    environment = reproducibility.environment_info(torch.device("cpu"), "determinism note")
+    assert set(environment) == {
+        "python",
+        "torch",
+        "cuda",
+        "device",
+        "platform",
+        "timm",
+        "pillow",
+        "sklearn",
+        "deterministic_algorithms",
+    }
+    assert environment["device"] == "cpu"
+    assert environment["pillow"] and environment["sklearn"]
