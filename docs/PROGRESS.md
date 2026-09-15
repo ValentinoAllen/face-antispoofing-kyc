@@ -40,8 +40,7 @@ The EDA notebook is still an open Week 1 item.
   record's `environment` block is the source of truth for versions. `pyproject.toml` still enforces
   Python <3.12, and `uv.lock` pins different torch and timm versions than Kaggle's.
 - **Not implemented:** BPCER@APCER=1%, per-species APCER, a threshold fitted on val, face crop,
-  augmentation, any test evaluation, `validate_attack_codes` violation counts in the build, and
-  manifest SHA-256s in the run record.
+  augmentation, any test evaluation, and `validate_attack_codes` violation counts in the build.
 - **Unverified:**
   - A capture-source shortcut is not ruled out.
   - The SCHEMA §1.2 directory-listing checks are still externally measured.
@@ -148,12 +147,7 @@ The EDA notebook is still an open Week 1 item.
 - Check for the capture-source shortcut; decide how first.
 - Week 2 evaluation design: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and the PRD
   §8 consequences (a)–(c).
-- Code session:
-  - make the manifest build report `validate_attack_codes` violation counts;
-  - store the SHA-256 of each manifest file a run reads (`manifest_train.csv`, `manifest_val.csv`)
-    in the run record, so a change in the Kaggle mirror is caught even when `git_sha` and
-    `split_sha256` are unchanged;
-  - fix the `new_record` docstring.
+- Code session: make the manifest build report `validate_attack_codes` violation counts.
 - Widen `requires-python` in `pyproject.toml` to include 3.12.
 - Set the PRD targets before the first full-train run. Write the EDA notebook.
 

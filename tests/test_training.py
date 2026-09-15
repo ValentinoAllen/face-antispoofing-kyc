@@ -62,6 +62,7 @@ CONTRACT_FIELDS = {
     "seed",
     "split_name",
     "split_sha256",
+    "manifest_sha256",
     "environment",
     "status",
     "eval_split",
@@ -200,6 +201,11 @@ def test_run_baseline_writes_record_predictions_and_checkpoint(
     assert re.fullmatch(r"[0-9a-f]{40}", record["git_sha"])
     split_bytes = synthetic_data.split_assignment_path.read_bytes()
     assert record["split_sha256"] == hashlib.sha256(split_bytes).hexdigest()
+    manifest_names = [MANIFEST_FILENAME.format(split=split) for split in ("train", "val")]
+    assert record["manifest_sha256"] == {
+        name: hashlib.sha256((synthetic_data.manifest_dir / name).read_bytes()).hexdigest()
+        for name in manifest_names
+    }
     resolved = json.loads((run_dir / RESOLVED_CONFIG_FILENAME).read_text(encoding="utf-8"))
     assert record["config_hash"] == reproducibility.config_hash(resolved)
     assert resolved["experiment"]["model"]["backbone"] == "test_efficientnet"

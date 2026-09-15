@@ -307,6 +307,7 @@ Enforcement:
 | `seed` | integer | no | ≥ 0; the same value as in the config |
 | `split_name` | string | no | Matches a file in `configs/splits/` |
 | `split_sha256` | string | no | SHA-256 hex of the split assignment file `configs/splits/split_assignment.csv` (`data.split_assignment_path`). That file is the split's identity (§2) |
+| `manifest_sha256` | object | no | Map from the file name of each manifest the run reads (`manifest_train.csv`, `manifest_val.csv`) to the SHA-256 hex of its bytes. Catches a changed manifest even when `git_sha` and `split_sha256` are unchanged |
 | `environment.python` | string | no | Python version |
 | `environment.torch` | string | no | `torch.__version__` |
 | `environment.cuda` | string | yes | CUDA version torch was built with; null on CPU-only torch builds |

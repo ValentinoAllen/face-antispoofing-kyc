@@ -10,6 +10,9 @@ This is the logic behind ``scripts/train.py``. Order of operations:
    read.
 4. Write the checkpoint and ``predictions.csv``, then the final record: ``completed``, or
    ``failed``/``aborted`` if anything raised.
+
+The record helpers (:func:`build_record`, :func:`fill_pooled_metrics`, :func:`close_failed_record`
+and :func:`write_json`) are public so that other entry points writing a run record can reuse them.
 """
 
 import json
@@ -84,6 +87,46 @@ class RunResult:
     epochs: tuple[EpochStats, ...]
 
 
+@dataclass(frozen=True)
+class RecordHeader:
+    """The description and provenance inputs every run record starts from.
+
+    Attributes:
+        hypothesis: One sentence, copied to the ledger.
+        what_changed: Copied to the ledger's "what changed" column.
+        notes: Free text.
+        seed: The seed the run used.
+        config_path: The experiment config file, under ``configs/`` in the repository.
+        repo_root: The repository root, for the git state and the repo-relative config path.
+        data_config: Split assignment path and manifest directory, after CLI overrides.
+        resolved_config: The fully resolved, JSON-compatible config that is hashed.
+    """
+
+    hypothesis: str
+    what_changed: str
+    notes: str
+    seed: int
+    config_path: Path
+    repo_root: Path
+    data_config: DataConfig
+    resolved_config: Mapping[str, Any]
+
+
+def manifest_paths(data_config: DataConfig) -> dict[str, Path]:
+    """Return the manifest file of each split a run reads, in reading order.
+
+    Args:
+        data_config: Holds the manifest directory.
+
+    Returns:
+        ``{"train": <manifest_dir>/manifest_train.csv, "val": <manifest_dir>/manifest_val.csv}``.
+    """
+    return {
+        split: data_config.manifest_dir / MANIFEST_FILENAME.format(split=split)
+        for split in (labels.SPLIT_TRAIN, labels.SPLIT_VAL)
+    }
+
+
 def load_subsets(train_config: TrainConfig, data_config: DataConfig) -> dict[str, pd.DataFrame]:
     """Read the train and val manifests, draw the configured subsets, and validate them.
 
@@ -104,13 +147,12 @@ def load_subsets(train_config: TrainConfig, data_config: DataConfig) -> dict[str
         labels.SPLIT_VAL: train_config.data.val_subset,
     }
     subsets: dict[str, pd.DataFrame] = {}
-    for split, size in sizes.items():
-        path = data_config.manifest_dir / MANIFEST_FILENAME.format(split=split)
+    for split, path in manifest_paths(data_config).items():
         manifest = read_manifest(path)
         wrong_split = manifest["split"] != split
         if wrong_split.any():
             raise ValueError(f"{path}: {int(wrong_split.sum())} rows are not in split {split!r}.")
-        subsets[split] = make_subset(manifest, size, train_config.run.seed)
+        subsets[split] = make_subset(manifest, sizes[split], train_config.run.seed)
         summary = summarize_split(subsets[split])
         logger.info(
             "%s subset: %d of %d rows, %d subjects (live %d, spoof %d).",
@@ -171,56 +213,6 @@ def resolved_config(train_config: TrainConfig, data_config: DataConfig) -> dict[
     return resolved
 
 
-def new_record(
-    inputs: RunInputs, run_id: str, created_at: datetime, environment: Mapping[str, str | None]
-) -> dict[str, Any]:
-    """Build the run record (``docs/SCHEMA.md`` §3) with ``status: running``.
-
-    Beyond the contract it carries ``what_changed`` (for the ledger row), and pooled-rate and count
-    keys under ``metrics``. ``split_sha256`` hashes the split assignment file itself, because the
-    split sidecar does not exist yet.
-
-    Args:
-        inputs: The run inputs.
-        run_id: From :func:`reproducibility.make_run_id`.
-        created_at: Launch time in UTC.
-        environment: From :func:`reproducibility.environment_info`.
-
-    Returns:
-        The record.
-
-    Raises:
-        ProvenanceError: If the git state or the repo-relative config path cannot be determined.
-    """
-    config = inputs.train_config
-    git = reproducibility.git_state(inputs.repo_root)
-    split_path = inputs.data_config.split_assignment_path
-    resolved = resolved_config(config, inputs.data_config)
-    return {
-        "run_id": run_id,
-        "created_at": created_at.isoformat(),
-        "hypothesis": config.run.hypothesis,
-        "what_changed": config.run.what_changed,
-        "config_path": reproducibility.repo_relative_config_path(
-            inputs.config_path, inputs.repo_root
-        ),
-        "config_hash": reproducibility.config_hash(resolved),
-        "git_sha": git.sha,
-        "git_dirty": git.dirty,
-        "seed": config.run.seed,
-        "split_name": split_path.name,
-        "split_sha256": reproducibility.sha256_file(split_path),
-        "environment": dict(environment),
-        "status": STATUS_RUNNING,
-        "eval_split": None,
-        "threshold": None,
-        "threshold_rule": None,
-        "metrics": dict.fromkeys(_METRIC_KEYS),
-        "artifacts": dict.fromkeys(("checkpoint", "onnx", "report_dir", "wandb_url")),
-        "notes": config.run.notes,
-    }
-
-
 _METRIC_KEYS = (
     "apcer_max",
     "apcer_per_species",
@@ -236,28 +228,104 @@ _METRIC_KEYS = (
 )
 
 
-def complete_record(
-    record: dict[str, Any],
-    config: TrainConfig,
-    metrics: PadMetrics,
-    epochs: tuple[EpochStats, ...],
-    checkpoint_path: Path,
-) -> None:
-    """Fill the evaluation results into ``record`` and mark it completed.
+def build_record(
+    header: RecordHeader, run_id: str, created_at: datetime, environment: Mapping[str, str | None]
+) -> dict[str, Any]:
+    """Build a run record (``docs/SCHEMA.md`` §3) with ``status: running`` and no results yet.
 
-    ``apcer_max``, ``acer`` and ``apcer_per_species`` stay null: only pooled rates are computed.
+    ``split_sha256`` hashes the split assignment file, which is the split's identity
+    (``docs/SCHEMA.md`` §2). ``manifest_sha256`` hashes each manifest the run reads
+    (:func:`manifest_paths`), catching a changed manifest even when ``git_sha`` is unchanged.
 
     Args:
-        record: From :func:`new_record`; updated in place.
-        config: The experiment config.
-        metrics: Pooled metrics on the val subset.
-        epochs: Per-epoch training stats.
-        checkpoint_path: Where the checkpoint was written.
+        header: The run description and provenance inputs.
+        run_id: From :func:`reproducibility.make_run_id`.
+        created_at: Launch time in UTC.
+        environment: From :func:`reproducibility.environment_info`.
+
+    Returns:
+        The record.
+
+    Raises:
+        ProvenanceError: If the git state or the repo-relative config path cannot be determined.
     """
-    record["status"] = STATUS_COMPLETED
+    git = reproducibility.git_state(header.repo_root)
+    split_path = header.data_config.split_assignment_path
+    return {
+        "run_id": run_id,
+        "created_at": created_at.isoformat(),
+        "hypothesis": header.hypothesis,
+        "what_changed": header.what_changed,
+        "config_path": reproducibility.repo_relative_config_path(
+            header.config_path, header.repo_root
+        ),
+        "config_hash": reproducibility.config_hash(header.resolved_config),
+        "git_sha": git.sha,
+        "git_dirty": git.dirty,
+        "seed": header.seed,
+        "split_name": split_path.name,
+        "split_sha256": reproducibility.sha256_file(split_path),
+        "manifest_sha256": {
+            path.name: reproducibility.sha256_file(path)
+            for path in manifest_paths(header.data_config).values()
+        },
+        "environment": dict(environment),
+        "status": STATUS_RUNNING,
+        "eval_split": None,
+        "threshold": None,
+        "threshold_rule": None,
+        "metrics": dict.fromkeys(_METRIC_KEYS),
+        "artifacts": dict.fromkeys(("checkpoint", "onnx", "report_dir", "wandb_url")),
+        "notes": header.notes,
+    }
+
+
+def new_record(
+    inputs: RunInputs, run_id: str, created_at: datetime, environment: Mapping[str, str | None]
+) -> dict[str, Any]:
+    """Build the training run record with ``status: running`` (see :func:`build_record`).
+
+    Args:
+        inputs: The run inputs.
+        run_id: From :func:`reproducibility.make_run_id`.
+        created_at: Launch time in UTC.
+        environment: From :func:`reproducibility.environment_info`.
+
+    Returns:
+        The record.
+
+    Raises:
+        ProvenanceError: If the git state or the repo-relative config path cannot be determined.
+    """
+    config = inputs.train_config
+    header = RecordHeader(
+        hypothesis=config.run.hypothesis,
+        what_changed=config.run.what_changed,
+        notes=config.run.notes,
+        seed=config.run.seed,
+        config_path=inputs.config_path,
+        repo_root=inputs.repo_root,
+        data_config=inputs.data_config,
+        resolved_config=resolved_config(config, inputs.data_config),
+    )
+    return build_record(header, run_id, created_at, environment)
+
+
+def fill_pooled_metrics(record: dict[str, Any], metrics: PadMetrics, threshold_rule: str) -> None:
+    """Write pooled PAD metrics computed on the val subset into ``record``, in place.
+
+    Sets ``eval_split`` to ``val``, ``threshold`` and ``threshold_rule``, and fills ``bpcer``, the
+    counts, ``apcer_pooled`` and ``acer_pooled``. ``apcer_max``, ``acer`` and ``apcer_per_species``
+    stay null: only pooled rates are computed.
+
+    Args:
+        record: From :func:`build_record`.
+        metrics: Pooled metrics on the val subset.
+        threshold_rule: How the threshold was chosen, from the config.
+    """
     record["eval_split"] = labels.SPLIT_VAL
     record["threshold"] = metrics.threshold
-    record["threshold_rule"] = config.eval.threshold_rule
+    record["threshold_rule"] = threshold_rule
     record["metrics"].update(
         bpcer=metrics.bpcer,
         n_bona_fide=metrics.n_bona_fide,
@@ -267,6 +335,26 @@ def complete_record(
         n_attack_accepted=metrics.n_attack_accepted,
         n_bona_fide_rejected=metrics.n_bona_fide_rejected,
     )
+
+
+def complete_record(
+    record: dict[str, Any],
+    config: TrainConfig,
+    metrics: PadMetrics,
+    epochs: tuple[EpochStats, ...],
+    checkpoint_path: Path,
+) -> None:
+    """Fill the evaluation results into ``record`` and mark it completed.
+
+    Args:
+        record: From :func:`new_record`; updated in place.
+        config: The experiment config.
+        metrics: Pooled metrics on the val subset.
+        epochs: Per-epoch training stats.
+        checkpoint_path: Where the checkpoint was written.
+    """
+    record["status"] = STATUS_COMPLETED
+    fill_pooled_metrics(record, metrics, config.eval.threshold_rule)
     record["artifacts"]["checkpoint"] = checkpoint_path.as_posix()
     record["training_epochs"] = [asdict(stats) for stats in epochs]
 
@@ -301,18 +389,18 @@ def run_baseline(inputs: RunInputs) -> RunResult:
     }
     run_dir = inputs.output_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
-    _write_json(resolved_config(config, inputs.data_config), run_dir / RESOLVED_CONFIG_FILENAME)
-    _write_json(record, run_dir / RECORD_FILENAME)
+    write_json(resolved_config(config, inputs.data_config), run_dir / RESOLVED_CONFIG_FILENAME)
+    write_json(record, run_dir / RECORD_FILENAME)
     logger.info("Run %s started on %s; writing to %s", run_id, device, run_dir)
     try:
         epochs = _train_and_evaluate(inputs, subsets, device, run_dir, record)
     except KeyboardInterrupt as error:
-        _close_failed_record(record, STATUS_ABORTED, error, run_dir)
+        close_failed_record(record, STATUS_ABORTED, error, run_dir)
         raise
     except Exception as error:
-        _close_failed_record(record, STATUS_FAILED, error, run_dir)
+        close_failed_record(record, STATUS_FAILED, error, run_dir)
         raise
-    _write_json(record, run_dir / RECORD_FILENAME)
+    write_json(record, run_dir / RECORD_FILENAME)
     return RunResult(record=record, run_dir=run_dir, epochs=epochs)
 
 
@@ -382,6 +470,36 @@ def format_ledger_row(record: Mapping[str, Any]) -> str:
     return "| " + " | ".join(str(cell).replace("|", "\\|") for cell in cells) + " |"
 
 
+def close_failed_record(
+    record: dict[str, Any], status: str, error: BaseException, run_dir: Path
+) -> None:
+    """Mark ``record`` as failed or aborted, store the error, and rewrite ``record.json``.
+
+    Args:
+        record: The running record; updated in place.
+        status: ``failed`` or ``aborted``.
+        error: The exception that ended the run.
+        run_dir: The run directory holding ``record.json``.
+    """
+    record["status"] = status
+    record["error"] = f"{type(error).__name__}: {error}"
+    write_json(record, run_dir / RECORD_FILENAME)
+    logger.error("Run %s %s: %s", record["run_id"], status, record["error"])
+
+
+def write_json(payload: Mapping[str, Any], path: Path) -> None:
+    """Write ``payload`` as indented JSON with a trailing newline. NaN and infinity are rejected.
+
+    Args:
+        payload: A JSON-compatible mapping.
+        path: The file to write.
+
+    Raises:
+        ValueError: If ``payload`` contains NaN or infinity.
+    """
+    path.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+
+
 def _train_and_evaluate(
     inputs: RunInputs,
     subsets: Mapping[str, pd.DataFrame],
@@ -434,18 +552,5 @@ def _log_to_wandb(inputs: RunInputs, record: Mapping[str, Any]) -> str:
     return url
 
 
-def _close_failed_record(
-    record: dict[str, Any], status: str, error: BaseException, run_dir: Path
-) -> None:
-    record["status"] = status
-    record["error"] = f"{type(error).__name__}: {error}"
-    _write_json(record, run_dir / RECORD_FILENAME)
-    logger.error("Run %s %s: %s", record["run_id"], status, record["error"])
-
-
 def _percent(value: float | None, suffix: str = "") -> str:
     return EMPTY_CELL if value is None else f"{100 * value:.2f}%{suffix}"
-
-
-def _write_json(payload: Mapping[str, Any], path: Path) -> None:
-    path.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n", encoding="utf-8")
