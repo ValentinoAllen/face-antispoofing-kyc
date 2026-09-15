@@ -101,6 +101,25 @@ def load_label_json(path: Path) -> dict[str, list[int]]:
     return document
 
 
+def read_manifest(path: Path) -> pd.DataFrame:
+    """Read a manifest CSV written by the builder, with the dtypes of ``docs/SCHEMA.md`` §1.3.
+
+    Args:
+        path: Path to ``manifest_{split}.csv``.
+
+    Returns:
+        The manifest with columns ``MANIFEST_COLUMNS``. ``subject_id`` stays a string so leading
+        zeros survive.
+
+    Raises:
+        ManifestError: If the header does not match ``MANIFEST_COLUMNS``.
+    """
+    header = pd.read_csv(path, nrows=0).columns
+    if tuple(header) != MANIFEST_COLUMNS:
+        raise ManifestError(f"{path}: expected columns {MANIFEST_COLUMNS}, got {tuple(header)}.")
+    return pd.read_csv(path, dtype=_DTYPES, keep_default_na=False)
+
+
 def parse_image_path(image_path: str) -> ParsedPath:
     """Read split, subject id and path kind from a relative image path.
 

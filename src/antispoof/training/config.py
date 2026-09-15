@@ -1,0 +1,171 @@
+"""Load and validate an experiment config such as ``configs/baseline.yaml``."""
+
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+DEVICE_AUTO = "auto"
+DEVICE_CPU = "cpu"
+DEVICE_CUDA = "cuda"
+DEVICES = (DEVICE_AUTO, DEVICE_CPU, DEVICE_CUDA)
+"""Allowed ``run.device`` values. ``auto`` means cuda if available, else cpu. MPS is not used."""
+
+
+class TrainConfigError(ValueError):
+    """Raised when an experiment config is missing keys or holds invalid values."""
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    """Run description and reproducibility settings (``run:``)."""
+
+    hypothesis: str
+    what_changed: str
+    notes: str
+    seed: int
+    device: str
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """Backbone settings (``model:``)."""
+
+    backbone: str
+    pretrained: bool
+    input_size: int
+
+
+@dataclass(frozen=True)
+class SubsetConfig:
+    """Subset sizes and data loading (``data:``)."""
+
+    train_subset: int
+    val_subset: int
+    batch_size: int
+    num_workers: int
+
+
+@dataclass(frozen=True)
+class OptimConfig:
+    """Optimizer and schedule (``optim:``)."""
+
+    lr: float
+    weight_decay: float
+    epochs: int
+
+
+@dataclass(frozen=True)
+class EvalConfig:
+    """Operating threshold (``eval:``)."""
+
+    threshold: float
+    threshold_rule: str
+
+
+@dataclass(frozen=True)
+class WandbConfig:
+    """Weights & Biases logging (``wandb:``)."""
+
+    enabled: bool
+    project: str
+
+
+@dataclass(frozen=True)
+class TrainConfig:
+    """A resolved experiment config. Each field is documented in ``configs/baseline.yaml``."""
+
+    run: RunConfig
+    model: ModelConfig
+    data: SubsetConfig
+    optim: OptimConfig
+    eval: EvalConfig
+    wandb: WandbConfig
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return the config as nested plain dicts, for hashing and the resolved-config file."""
+        return asdict(self)
+
+
+def load_train_config(path: Path) -> TrainConfig:
+    """Load an experiment YAML into a validated :class:`TrainConfig`.
+
+    Args:
+        path: Path to the YAML file.
+
+    Returns:
+        The validated configuration.
+
+    Raises:
+        TrainConfigError: If sections or keys are missing or unknown, a value has the wrong type,
+            or a value is out of range.
+    """
+    with path.open(encoding="utf-8") as handle:
+        document = yaml.safe_load(handle)
+    section_types = {field.name: field.type for field in fields(TrainConfig)}
+    if not isinstance(document, dict) or set(document) != set(section_types):
+        raise TrainConfigError(
+            f"{path}: expected exactly the top-level sections {sorted(section_types)}."
+        )
+    config = TrainConfig(
+        **{name: _parse_section(name, document[name], kind) for name, kind in section_types.items()}
+    )
+    validate_train_config(config)
+    return config
+
+
+def validate_train_config(config: TrainConfig) -> None:
+    """Check value ranges. Also run on configs changed after loading (debug overrides).
+
+    Args:
+        config: The configuration to check.
+
+    Raises:
+        TrainConfigError: Listing every violated constraint.
+    """
+    checks = [
+        (bool(config.run.hypothesis.strip()), "run.hypothesis must not be empty"),
+        (config.run.seed >= 0, "run.seed must be >= 0"),
+        (config.run.device in DEVICES, f"run.device must be one of {DEVICES}"),
+        (bool(config.model.backbone.strip()), "model.backbone must not be empty"),
+        (config.model.input_size > 0, "model.input_size must be > 0"),
+        (config.data.train_subset > 0, "data.train_subset must be > 0"),
+        (config.data.val_subset > 0, "data.val_subset must be > 0"),
+        (config.data.batch_size > 0, "data.batch_size must be > 0"),
+        (config.data.num_workers >= 0, "data.num_workers must be >= 0"),
+        (config.optim.lr > 0, "optim.lr must be > 0"),
+        (config.optim.weight_decay >= 0, "optim.weight_decay must be >= 0"),
+        (config.optim.epochs >= 1, "optim.epochs must be >= 1"),
+        (0.0 <= config.eval.threshold <= 1.0, "eval.threshold must be in [0, 1]"),
+        (bool(config.eval.threshold_rule.strip()), "eval.threshold_rule must not be empty"),
+        (bool(config.wandb.project.strip()), "wandb.project must not be empty"),
+    ]
+    problems = [message for passed, message in checks if not passed]
+    if problems:
+        raise TrainConfigError("Invalid experiment config: " + "; ".join(problems) + ".")
+
+
+def _parse_section(name: str, section: object, section_type: Any) -> Any:
+    if not isinstance(section, dict):
+        raise TrainConfigError(f"Section {name!r} must be a mapping.")
+    expected = {field.name: field.type for field in fields(section_type)}
+    missing, unknown = set(expected) - set(section), set(section) - set(expected)
+    if missing or unknown:
+        raise TrainConfigError(
+            f"Section {name!r}: missing keys {sorted(missing)}, unknown keys {sorted(unknown)}."
+        )
+    values = {
+        key: _typed_value(f"{name}.{key}", section[key], kind) for key, kind in expected.items()
+    }
+    return section_type(**values)
+
+
+def _typed_value(key: str, value: object, expected: Any) -> object:
+    if expected is float and isinstance(value, int) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, bool) != (expected is bool) or not isinstance(value, expected):
+        raise TrainConfigError(
+            f"{key}: expected {expected.__name__}, got {type(value).__name__} ({value!r})."
+        )
+    return value

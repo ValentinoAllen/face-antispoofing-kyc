@@ -1,0 +1,44 @@
+# Baseline experiment: the first end-to-end training run (smoke run on subsets, val only).
+# Loaded by antispoof.training.config.load_train_config. Every tunable value of the run lives here
+# (docs/RULES.md §2); data paths come from configs/data.yaml and the scripts/train.py flags.
+# Configs are immutable once a run has cited them: copy this file to change settings.
+
+run:
+  # One sentence; copied into the run record and the docs/EXPERIMENTS.md row.
+  hypothesis: "An ImageNet-pretrained mobilenetv3_large_100 fine-tuned for one epoch on a 4k train subset trains end to end on Kaggle and gives finite pooled PAD metrics on a 2k val subset."
+  what_changed: "First baseline: binary head, no augmentation, no face crop"
+  notes: "smoke run: 1 epoch, 4k/2k subset, val subset only, no face crop, no augmentation"
+  seed: 42
+  # auto = cuda if available, else cpu. mps is not used.
+  device: auto
+
+model:
+  # timm model name. Normalization mean/std and resize interpolation come from its pretrained config.
+  backbone: mobilenetv3_large_100
+  pretrained: true
+  # Side length of the square input, in pixels.
+  input_size: 224
+
+data:
+  # Seeded, label-stratified subsets of manifest_train.csv and manifest_val.csv (seed: run.seed).
+  train_subset: 4000
+  val_subset: 2000
+  batch_size: 64
+  num_workers: 4
+
+optim:
+  # AdamW on BCEWithLogitsLoss, constant learning rate. AMP on CUDA only.
+  lr: 3.0e-4
+  weight_decay: 1.0e-2
+  epochs: 1
+
+eval:
+  # A val image is classified as spoof iff sigmoid(logit) >= threshold.
+  threshold: 0.5
+  # Fixed value from this file, not fitted on val.
+  threshold_rule: fixed_config
+
+wandb:
+  # Disabled: W&B is never imported and no API key is needed.
+  enabled: false
+  project: antispoof

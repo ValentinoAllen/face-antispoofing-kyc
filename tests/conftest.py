@@ -4,7 +4,9 @@ import dataclasses
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
+import pandas as pd
 import pytest
+from PIL import Image
 
 from antispoof.data import labels
 from antispoof.data.config import DataConfig, load_data_config
@@ -14,6 +16,20 @@ REPO_DATA_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "data.yaml"
 SYNTHETIC_SPOOF_TYPE = 1
 SYNTHETIC_ILLUMINATION = 1
 SYNTHETIC_ENVIRONMENT = 1
+
+SYNTHETIC_IMAGE_SIDE = 16
+LIVE_PIXEL = 0
+SPOOF_PIXEL = 255
+
+
+def _write_images(manifest: pd.DataFrame, dataset_root: Path) -> None:
+    """Write one solid image per manifest row under ``dataset_root``: black live, white spoof."""
+    for image_path, label in zip(manifest["image_path"], manifest["label"], strict=True):
+        path = dataset_root / image_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        value = SPOOF_PIXEL if label == labels.LABEL_SPOOF else LIVE_PIXEL
+        side = SYNTHETIC_IMAGE_SIDE
+        Image.new("RGB", (side, side), (value, value, value)).save(path)
 
 
 def _vector(
@@ -65,6 +81,12 @@ def image_path() -> Callable[..., str]:
 def make_labels() -> Callable[..., dict[str, list[int]]]:
     """Factory for a conflict-free label mapping."""
     return _labels
+
+
+@pytest.fixture
+def write_images() -> Callable[[pd.DataFrame, Path], None]:
+    """Writer of solid synthetic images for a manifest: black for live, white for spoof."""
+    return _write_images
 
 
 @pytest.fixture
