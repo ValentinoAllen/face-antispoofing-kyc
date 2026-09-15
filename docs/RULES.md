@@ -46,8 +46,12 @@ rule in a commit that explains why. Do not quietly ignore it.
   name.
 - CLI overrides are allowed for local debugging only. A run that used overrides records the fully
   resolved config, and that resolved config is what gets hashed.
-- Machine-specific paths (Kaggle vs local) are handled by a small per-environment config that the
-  experiment config includes, not by `if` branches in code.
+- Machine-specific paths (Kaggle vs local) live in `configs/data.yaml` and CLI flags. There is no
+  per-environment config and no `if` branch on the environment in code.
+  - A run on another machine overrides the data paths with the `scripts/train.py` flags
+    `--manifest-dir` and `--dataset-root`. Unlike other CLI overrides, these path flags may be used
+    in any run. The overridden values are part of the resolved config and its hash.
+  - `--output-dir` only chooses where the run directory is written.
 
 ## 3. Reproducibility rules
 

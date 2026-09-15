@@ -395,9 +395,12 @@ are not a model-quality estimate. The EDA notebook is still an open Week 1 item.
   **Answered:** printed by the same run (SCHEMA.md §1.1.1).
   - 47,247 test `spoof/` rows carry 10 / 4 / 2 distinct codes, and none has code `0`.
   - The distributions differ materially from train (covariate shift, PRD.md §8).
-- Should the build assert `validate_attack_codes`? Codes on the 2,022 conflicting train rows are
+- ~~Should the build assert `validate_attack_codes`? Codes on the 2,022 conflicting train rows are
   still unmeasured. The build report counts only `spoof/` rows, so codes on live rows are unmeasured
-  too. Decide before the Week 2 baseline.
+  too. Decide before the Week 2 baseline.~~
+  **Decided (owner, 2026-09-16):** every manifest build reports `validate_attack_codes` violation
+  counts. The check becomes a hard assertion once a Kaggle build shows zero violations.
+  - Not implemented: the build does not call the validator yet. The code change is a later session.
 - ~~Live/spoof prior shift between val and test: the live fraction is 33.0% in train and 32.7% in
   val, but 29.7% in test (SCHEMA.md §1.2). A threshold calibrated on val is not guaranteed to keep
   its operating point on test.~~
@@ -415,25 +418,39 @@ are not a model-quality estimate. The EDA notebook is still an open Week 1 item.
 - Bounding-box format.
   - One observed clue: a file named `004046_BB.txt` at the dataset root, which suggests per-image
     `{image_id}_BB.txt` sidecar files. Unverified.
-  - Bounding boxes go into manifest v2 once confirmed. Verify before the Week 2 baseline.
+  - Bounding boxes go into manifest v2 once confirmed. Verify before the first run with face crop.
 - ~~Reconcile the externally measured counts in SCHEMA.md §1.2 with the output of the first Kaggle run
   of `scripts/build_manifest.py`. Do this before the Week 2 baseline.~~
   **Answered:** reproduced exactly by `scripts/build_manifest.py` on 2026-09-15. The only exception
   is the directory-listing checks, which the script does not perform and which remain externally
   measured.
-- Keys of the `manifest.meta.json` and `split_assignment.meta.yaml` sidecar files. Decide before the
-  Week 2 baseline.
+- ~~Keys of the `manifest.meta.json` and `split_assignment.meta.yaml` sidecar files. Decide before the
+  Week 2 baseline.~~
+  **Closed (owner, 2026-09-16):** there are no sidecar files; a file's SHA-256 is its identity.
+  - The split is identified by `split_sha256`, the SHA-256 of `configs/splits/split_assignment.csv`,
+    in each run record (SCHEMA.md §2–3).
+  - Both sidecars were removed from SCHEMA.md. Storing the SHA-256 of each manifest a run reads is a
+    Next item and is not implemented.
 - Dataset license terms: can failure-gallery images appear in public reports? Can a hosted copy be
   used on Kaggle? Check before the Week 1 manifest.
 - PRD success-metric targets (APCER, BPCER, ACER, BPCER@APCER=1%, model size, CPU latency). Decide
-  before the Week 2 baseline.
+  before the first full-train run.
+  - Reason for this deadline: the smoke-run numbers are not interpretable until the capture-source
+    shortcut is checked, and targets must not be fitted to them.
 - Backbone and input resolution. Decide before the Week 2 baseline.
   - The smoke run used `mobilenetv3_large_100` at 224 px (`configs/baseline.yaml`) as a starting
     default, because ARCHITECTURE.md lists the backbone as TBD. This is not a decision.
-- Python version compatibility with the Kaggle/Colab runtimes. Verify before the Week 2 baseline.
-  - The Kaggle runs on 2026-09-15 used Python 3.12.13, torch 2.10.0+cu128 and timm 1.0.26
-    (run records).
-  - `pyproject.toml` requires Python >=3.11,<3.12, and `uv.lock` pins torch 2.14.0 and timm 1.0.29.
+- ~~Python version compatibility with the Kaggle/Colab runtimes. Verify before the Week 2 baseline.~~
+  **Decided (owner, 2026-09-16):**
+  - Supported Python is 3.11–3.12.
+  - Kaggle is the reference environment for every run that produces numbers. It uses Kaggle's
+    preinstalled torch and timm via `PYTHONPATH=src` and never pip-installs the project, since that
+    could replace Kaggle's CUDA-matched torch.
+  - Each run record's `environment` block is the source of truth for versions. The local pins exist
+    for tests.
+  - The Kaggle runs on 2026-09-15 used Python 3.12.13, torch 2.10.0+cu128 and timm 1.0.26 (run
+    records). `pyproject.toml` still requires Python >=3.11,<3.12, and `uv.lock` pins torch 2.14.0
+    and timm 1.0.29, until `requires-python` is widened (a Next item).
 - Capture-source shortcut: not yet ruled out (owner's note on the `20260915-153606-baseline` ledger
   row). Until it is, no baseline metric is a model-quality estimate. How to check it is TBD.
 

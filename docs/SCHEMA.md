@@ -205,8 +205,6 @@ Manifest-level invariants:
   unique, and train and test paths differ in their split component.
 - Every `subject_id` maps to exactly one `split` across the three files. `validate_splits` checks
   this on the stacked manifests at build time (§2).
-- Sidecar `manifest.meta.json` (`sha256` of each CSV, `row_count`, `created_at`, `git_sha`): not yet
-  produced. TBD — decide before Week 2 baseline.
 
 ### 1.4 Bounding boxes (not in manifest v1)
 
@@ -240,10 +238,8 @@ How the split is built (ADR-009, settings in `configs/data.yaml`):
 - **Train:** the remaining subjects.
 - **Excluded subjects:** listed only as `test`.
 
-Sidecar `configs/splits/split_assignment.meta.yaml`:
-- Not yet produced.
-- Run records need it to cite `split_sha256` (§3).
-- Its keys are TBD — decide before Week 2 baseline.
+The file is the split's identity. It has no sidecar: each run record stores the file's SHA-256 as
+`split_sha256` (§3).
 
 ### Invariant: subject disjointness
 
@@ -283,24 +279,43 @@ Enforcement:
 
 ## 3. Experiment record
 
-- **Path:** `reports/runs/<run_id>/record.json`, one file per run. It is also logged to W&B as run
-  config/summary.
+- **Path:** `<output-dir>/<run_id>/record.json`, one file per run. `scripts/train.py` (through
+  `antispoof.training.run`) writes it on Kaggle, next to `resolved_config.json`, `checkpoint.pt` and
+  `predictions.csv`.
+  - The record is first written with `status: running` and rewritten when the run ends.
+  - **Committed copy:** the owner copies `record.json` and `resolved_config.json` into
+    `reports/runs/<run_id>/` and commits them together with the run's `EXPERIMENTS.md` row.
+  - `checkpoint.pt` and `predictions.csv` are never committed. A run meant to be kept is saved as a
+    Kaggle notebook version, so `/kaggle/working` persists.
+  - When `wandb.enabled` is true, the resolved config and the non-null metrics are also logged to
+    W&B.
 - **Format:** JSON object.
+- A key marked "present only when …" is absent otherwise. Every other key is always present.
 
 | Field | JSON type | Nullable | Constraint |
 |---|---|---|---|
 | `run_id` | string | no | `YYYYMMDD-HHMMSS-<slug>` in UTC; unique |
 | `created_at` | string | no | ISO 8601 UTC |
 | `hypothesis` | string | no | One sentence; copied to `EXPERIMENTS.md` |
+| `what_changed` | string | no | From `run.what_changed`; copied to the "what changed" column of `EXPERIMENTS.md` |
 | `config_path` | string | no | Repo-relative path under `configs/` |
 | `config_hash` | string | no | SHA-256 hex of the fully resolved config serialized with sorted keys |
 | `git_sha` | string | no | 40-character hex of `HEAD` at launch |
 | `git_dirty` | boolean | no | `true` if the working tree had uncommitted changes. Such runs cannot be cited as results |
 | `seed` | integer | no | ≥ 0; the same value as in the config |
 | `split_name` | string | no | Matches a file in `configs/splits/` |
-| `split_sha256` | string | no | Matches the split sidecar |
-| `environment` | object | no | `{python, torch, cuda, device, platform}`; strings, `cuda` nullable |
-| `status` | string | no | `running`, `completed`, `failed` or `aborted` |
+| `split_sha256` | string | no | SHA-256 hex of the split assignment file `configs/splits/split_assignment.csv` (`data.split_assignment_path`). That file is the split's identity (§2) |
+| `environment.python` | string | no | Python version |
+| `environment.torch` | string | no | `torch.__version__` |
+| `environment.cuda` | string | yes | CUDA version torch was built with; null on CPU-only torch builds |
+| `environment.device` | string | no | Device the run used |
+| `environment.platform` | string | no | `platform.platform()` |
+| `environment.timm` | string | no | `timm.__version__` |
+| `environment.deterministic_algorithms` | string | no | Description of the determinism settings applied by `antispoof.training.reproducibility.seed_everything` |
+| `status` | string | no | `running`, `completed`, `failed` or `aborted`. `running` is written at launch; the other values when the run ends |
+| `error` | string | no | Present only when `status` is `failed` or `aborted`. `<ExceptionType>: <message>` of the exception that ended the run |
+| `data_subsets` | object | no | Keys `train` and `val`, each `{rows, subjects, live, spoof}` as integers: counts of the subset the run actually used |
+| `training_epochs` | array[object] | no | Present only when `status` is `completed`. One item per epoch: `{steps: integer, images: integer, mean_loss: number, wall_time_s: number, images_per_s: number}`. Wall time includes data loading |
 | `eval_split` | string | yes | `val` or `test`; null until evaluated |
 | `threshold` | number | yes | Operating threshold used for the metrics, in [0, 1] |
 | `threshold_rule` | string | yes | How the threshold was chosen (e.g. `apcer_on_val`) |
@@ -311,13 +326,20 @@ Enforcement:
 | `metrics.bpcer_at_apcer_1pct` | number | yes | In [0, 1] |
 | `metrics.n_bona_fide` | integer | yes | Count of bona fide samples evaluated |
 | `metrics.n_attack` | integer | yes | Count of attack samples evaluated |
-| `artifacts.checkpoint` | string | yes | Path or W&B artifact reference |
+| `metrics.apcer_pooled` | number | yes | In [0, 1]; `n_attack_accepted / n_attack`, pooled over all PAI species. Not the ISO/IEC 30107-3 APCER, which is `apcer_max` |
+| `metrics.acer_pooled` | number | yes | In [0, 1]; equals `(apcer_pooled + bpcer) / 2` |
+| `metrics.n_attack_accepted` | integer | yes | Attack samples classified as bona fide (score < `threshold`) |
+| `metrics.n_bona_fide_rejected` | integer | yes | Bona fide samples classified as attacks (score >= `threshold`) |
+| `artifacts.checkpoint` | string | yes | Path where the run wrote the checkpoint (`<output-dir>/<run_id>/checkpoint.pt`), or a W&B artifact reference. Never committed |
 | `artifacts.onnx` | string | yes | Path or W&B artifact reference |
 | `artifacts.report_dir` | string | yes | `reports/<run_id>/` |
 | `artifacts.wandb_url` | string | yes | URL of the W&B run |
 | `notes` | string | yes | Free text |
 
 Metrics are stored as fractions in [0, 1]. Docs and reports display them as percentages.
+
+The baseline computes pooled rates only. It fills `bpcer`, the four counts, `apcer_pooled` and
+`acer_pooled`, and leaves `apcer_max`, `apcer_per_species`, `acer` and `bpcer_at_apcer_1pct` null.
 
 ## 4. API JSON schemas
 

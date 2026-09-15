@@ -4,12 +4,12 @@
 
 | Layer | Choice | Why |
 |---|---|---|
-| Language | Python 3.11 | Wheels are available for everything in the stack (PyTorch, ONNX Runtime, OpenCV, albumentations). Compatibility with the Kaggle/Colab runtime Python version is TBD — verify before Week 2 baseline |
+| Language | Python 3.11–3.12 | Wheels are available for everything in the stack (PyTorch, ONNX Runtime, OpenCV, albumentations). Kaggle is the reference environment for every run that produces numbers: it uses Kaggle's preinstalled torch and timm via `PYTHONPATH=src` and never pip-installs the project, which could replace Kaggle's CUDA-matched torch. Each run record's `environment` block is the source of truth for versions; the local pins exist for tests. `pyproject.toml` still enforces `>=3.11,<3.12` until that range is widened (`PROGRESS.md`) |
 | Environment | uv + `pyproject.toml` + `uv.lock` | One tool for the interpreter, virtualenv and a lockfile. It is fast enough to recreate environments on ephemeral Kaggle/Colab machines |
 | Deep learning | PyTorch + torchvision | The standard research framework, with first-class MPS support on Apple silicon for local smoke tests and CUDA on Kaggle/Colab |
 | Backbones | timm | Pretrained ImageNet backbones behind one API, so swapping the backbone is a config change instead of a code change |
 | Augmentation | albumentations | Fast, composable image augmentations, including the photometric, blur and compression transforms that matter for spoof cues |
-| Image I/O | opencv-python-headless, Pillow | OpenCV handles decoding, resizing and face cropping. The headless build avoids GUI dependencies on servers. Pillow decodes uploads in the API |
+| Image I/O | Pillow, torchvision | Training decodes images with Pillow and resizes and normalizes them with torchvision transforms. The resize interpolation and the normalization mean/std come from the backbone's timm pretrained config. Face cropping is not implemented. Pillow decodes uploads in the API. `opencv-python-headless` is a declared dependency, but no code uses it yet |
 | Tabular data | pandas, numpy | Building and validating the manifest, and aggregating metrics by attribute |
 | Metrics helpers | scikit-learn | ROC/DET curve primitives and calibration utilities. The PAD metrics themselves are implemented and tested in `antispoof.eval` |
 | Plots | matplotlib | Static figures for evaluation reports that can be committed to the repo |
@@ -55,7 +55,8 @@ Manifests manifest_{train,val,test}.csv (data/manifests/, gitignored; SCHEMA.md 
         │  invariant check: validate_splits at build time and at load time (ADR-009)
         ▼
 Dataset + transforms (face crop → resize → augment [train only] → normalize)
-        │  scripts/train.py --config configs/<exp>.yaml   → antispoof.training
+        │  scripts/train.py --data-config configs/data.yaml --config configs/<exp>.yaml
+        │                   --manifest-dir <dir> --output-dir <dir>   → antispoof.training
         ▼
 Training on Kaggle/Colab GPU (seeded; W&B logging; run record; SCHEMA.md §3)
         │
@@ -75,8 +76,8 @@ FastAPI service (antispoof.serving): decode → face detect → quality gate →
 JSON verdict (SCHEMA.md §4) → demo page / calling KYC backend
 ```
 
-`scripts/build_manifest.py` exists. The other script names describe where each entry point will
-live; they do not exist yet.
+`scripts/build_manifest.py` and `scripts/train.py` exist. `scripts/evaluate.py` and
+`scripts/export_onnx.py` describe where those entry points will live; they do not exist yet.
 
 ## 4. Compute split: local vs Kaggle/Colab
 
@@ -111,7 +112,11 @@ Each ADR records context, decision and consequence. Superseded decisions are mar
   `uv.lock`.
 - **Consequence:** One command (`uv sync`) sets up the environment. Kaggle/Colab come with their own
   CUDA PyTorch build, so the cloud setup may install the project on top of the platform's torch
-  instead of from the lockfile. Any version drift must be recorded in the run record.
+  instead of from the lockfile. Any version drift must be recorded in the run record. *(Superseded
+  in part, 2026-09-16: on Kaggle the project is never installed. Runs use Kaggle's preinstalled torch
+  and timm with `PYTHONPATH=src`, and each run record's `environment` block is the source of truth
+  for versions. `uv sync` and `uv.lock` set up the local environment used for tests. See the
+  Language row in §1.)*
 
 ### ADR-002: All hyperparameters live in YAML configs
 - **Context:** Results that cannot be traced back to exact settings are worthless for comparison.
