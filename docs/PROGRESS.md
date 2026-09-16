@@ -2,8 +2,9 @@
 
 ## Current status
 
-The baseline training pipeline is committed and has one recorded Kaggle smoke run, whose numbers
-are not a model-quality estimate. The seven doc gaps found after that run are closed (`d6e2c3c`).
+The baseline training pipeline is committed, with Kaggle smoke runs on 4k/2k subsets whose numbers
+are not a model-quality estimate. A header-metadata probe on the same subsets,
+`20260916-075616-probe_metadata`, meets the pre-registered rule for a strong header-level shortcut.
 The EDA notebook is still an open Week 1 item.
 - **Code:** `antispoof.data` holds the verified annotation layout and code convention, the config
   loader, the manifest builder, the subject-level split with its invariants and the build
@@ -13,44 +14,71 @@ The EDA notebook is still an open Week 1 item.
   computes pooled APCER, BPCER and ACER. `antispoof.training` holds the experiment config loader,
   seeding and provenance helpers, the training loop and the run orchestration behind
   `scripts/train.py` with `configs/baseline.yaml`.
-- **Checks:** ruff, mypy (19 source files) and `uv run pytest` (165 tests) passed before commit
-  `6f368c0`. They have not been rerun since, because only run records and docs changed.
+  - `antispoof.eval.metadata_probe`, `scripts/probe_metadata.py` and `configs/probe_metadata.yaml`
+    read image headers only (no pixel decode) for the baseline's subsets. They report per-class
+    summaries, a descriptive single-feature val ROC AUC ranking, pooled PAD metrics of a
+    HistGradientBoosting (primary) and a logistic regression (secondary) classifier, and an optional
+    comparison with a baseline `predictions.csv`.
+  - Run records now carry `manifest_sha256`, `environment.pillow` and `environment.sklearn`.
+- **Checks:** ruff, mypy (20 source files) and `uv run pytest` (182 tests) passed before commit
+  `0f03586`, locally with Pillow 12.3.0 and scikit-learn 1.9.1.
 - **Dataset:** the owner's third Kaggle build (2026-09-15) printed counts equal to every count in
   `docs/SCHEMA.md` §1.2 and §1.1.1. Split: train 442,859 rows / 7,370 subjects, val 49,308 / 819,
   test 67,170 / 1,004. The committed `configs/splits/split_assignment.csv` is the one the runs used:
-  its SHA-256 equals the records' `split_sha256`.
-- **Runs:** `20260915-153606-baseline` is in `docs/EXPERIMENTS.md`.
-  - Run at `6f368c0` on CUDA from a clean tree.
-  - Trained 1 epoch on a 4,000-image train subset; evaluated on a 2,000-image val subset (654 live,
-    1,346 spoof) at a fixed threshold of 0.5.
-  - Pooled APCER 1.86% (25/1,346), BPCER 1.53% (10/654), pooled ACER 1.69%.
-  - The other run, `20260915-153137-baseline`, was launched first (by `created_at`) and gave
-    identical metrics. Its epoch took 55.8 s (71.7 train images/s) against 41.0 s for
-    `20260915-153606-baseline`. This is consistent with a cold file cache on the first pass over the
-    images; it was not measured. 71.7 images/s is therefore the more realistic throughput for a
-    first pass over unseen images.
-  - Both records are in `reports/runs/`; the checkpoints stayed on Kaggle.
+  its SHA-256 equals the records' `split_sha256`. The two 2026-09-16 runs read manifests with
+  identical `manifest_sha256`.
+- **Runs:** `20260915-153606-baseline`, `20260916-075448-baseline` and
+  `20260916-075616-probe_metadata` are in `docs/EXPERIMENTS.md`.
+  - Baseline: 1 epoch on a 4,000-image train subset, evaluated on a 2,000-image val subset (654 live,
+    1,346 spoof) at a fixed threshold of 0.5. Pooled APCER 1.86% (25/1,346), BPCER 1.53% (10/654),
+    pooled ACER 1.69%.
+  - `20260915-153137-baseline`, `20260915-153606-baseline` (both at `6f368c0`) and
+    `20260916-075448-baseline` (at `9d75207`) have identical metrics, counts and mean train loss;
+    only epoch wall time and images/s differ.
+  - `20260915-153137-baseline` was launched first (by `created_at`). Its epoch took 55.8 s (71.7
+    train images/s) against 41.0 s for `20260915-153606-baseline`. This is consistent with a cold
+    file cache on the first pass over the images; it was not measured. 71.7 images/s is therefore
+    the more realistic throughput for a first pass over unseen images.
+  - Probe: the primary classifier has pooled APCER 0.00% (0/1,346), BPCER 0.00% (0/654) and pooled
+    ACER 0.00% on the val subset: a strong header-level shortcut under the pre-registered rule. The
+    secondary classifier also has 0/1,346 and 0/654. The CNN-vs-metadata comparison is
+    uninformative, because the metadata classifier made no errors and its score is constant within
+    each class.
+  - Header facts (`probe_summary.json`): in both subsets every live and spoof image is `.jpg`, JPEG,
+    RGB, 4:2:0, non-progressive, with no EXIF and no ICC profile. The mean of the JPEG luminance
+    quantization table is constant within each class on train and val (29.03125 live, 5.765625
+    spoof). Spoof pixel count has median 270,000 with IQR 0 on train and val. The descriptive
+    single-feature val ROC AUC is 1.0 for `jpeg_luma_quant_mean`, between 0.95 and 1.0 for the
+    six size and dimension features, and 0.5 for the seven categorical and flag features.
+  - Records are in `reports/runs/`; checkpoints, `predictions.csv` and `features.csv` stayed on
+    Kaggle.
 - **Run records:** training writes `<output-dir>/<run_id>/` on Kaggle. The owner copies
   `record.json` and `resolved_config.json` into `reports/runs/<run_id>/` and commits them with the
-  ledger row. Checkpoints and predictions are not committed; a run to be kept is saved as a Kaggle
-  notebook version (`docs/SCHEMA.md` §3, `docs/EXPERIMENTS.md`). The split's identity is
+  ledger row; for the probe, `probe_summary.json` is committed too (owner decision), which
+  `docs/SCHEMA.md` §3 and `docs/EXPERIMENTS.md` do not yet describe. Checkpoints and predictions are
+  not committed; a run to be kept is saved as a Kaggle notebook version. The split's identity is
   `split_sha256`; there are no sidecar files.
 - **Environment:** supported Python is 3.11–3.12. Kaggle, with its preinstalled torch and timm via
   `PYTHONPATH=src`, is the reference environment for every run that produces numbers, and each
-  record's `environment` block is the source of truth for versions. `pyproject.toml` still enforces
-  Python <3.12, and `uv.lock` pins different torch and timm versions than Kaggle's.
+  record's `environment` block is the source of truth for versions. The 2026-09-16 Kaggle runs used
+  Pillow 11.3.0 and scikit-learn 1.6.1. `pyproject.toml` still enforces Python <3.12, and `uv.lock`
+  pins different torch and timm versions than Kaggle's.
 - **Not implemented:** BPCER@APCER=1%, per-species APCER, a threshold fitted on val, face crop,
   augmentation, any test evaluation, and `validate_attack_codes` violation counts in the build.
 - **Unverified:**
-  - A capture-source shortcut is not ruled out.
+  - Whether the CNN uses the header-level traces: the probe shows they are available, not that they
+    are used.
+  - Whether the class-level differences in JPEG quantization tables and image dimensions come from
+    the original CelebA-Spoof release or from this Kaggle mirror.
+  - Pixel-level shortcuts are untested.
   - The SCHEMA §1.2 directory-listing checks are still externally measured.
   - Codes on the 2,022 conflicting train rows and on live rows are unmeasured, and val's code
     distribution is not printed.
 - **Known risks:** covariate shift between the train and test attack populations (`docs/PRD.md`
   §8). Val and test ACER are not directly comparable, and per-condition test cells are small.
-- **Next step:** check for the capture-source shortcut (how to check it is still TBD). Then design
-  the Week 2 evaluation: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and the PRD §8
-  consequences (a)–(c).
+- **Next step:** test whether the CNN uses the header-level traces, and measure the JPEG
+  quantization tables. Then design the Week 2 evaluation: a val-fitted threshold, BPCER@APCER=1%,
+  per-species APCER and the PRD §8 consequences (a)–(c).
 
 ## Milestones
 
@@ -81,6 +109,85 @@ The EDA notebook is still an open Week 1 item.
   write-up
 
 ## Session log
+
+### 2026-09-16: Metadata probe for the capture-source shortcut
+
+**Done**
+- `dce18e9` (docs):
+  - `docs/PRD.md` §6: the target deadlines are "before the first full-train run".
+  - `docs/SCHEMA.md` §1.1: states the `validate_attack_codes` decision.
+  - `docs/ARCHITECTURE.md` §4: checkpoints are never committed, and kept runs persist as Kaggle
+    notebook versions. Handoff to local for ONNX export is "TBD — decide before Week 6 ONNX export";
+    that deadline was proposed in this session and approved by the owner with the plan.
+  - `README.md`: the Python line matches the ARCHITECTURE Language row.
+- `b210394` (provenance):
+  - `src/antispoof/training/run.py`: `manifest_sha256` in the run record, with `manifest_paths` as
+    the single source of the files read and hashed. Shared record helpers `RecordHeader`,
+    `build_record`, `fill_pooled_metrics`, `close_failed_record` and `write_json`. The
+    `new_record` docstring no longer mentions a split sidecar.
+  - `docs/SCHEMA.md` §3 row; `tests/test_training.py` asserts the hashes.
+- `9d75207` (probe):
+  - `src/antispoof/eval/metadata_probe.py`, `configs/probe_metadata.yaml` (hypothesis, what_changed
+    and notes verbatim from the owner), `scripts/probe_metadata.py` and
+    `tests/test_metadata_probe.py`.
+  - All 14 requested features are read from header parsing in the installed Pillow 12.3.0; none was
+    dropped.
+  - `environment_info` adds `pillow` and `sklearn`; `parse_section` in `antispoof.training.config`
+    is public.
+  - `docs/SCHEMA.md` §3: `environment.pillow`, `environment.sklearn`, and `training_epochs` nullable
+    for runs that do not train.
+  - Tests on synthetic JPEG and PNG files: extracted values, PNG nulls and missing indicators, a spy
+    showing no pixel `load` call (one header and a full `run_probe`), unreadable headers naming the
+    path, the exact-join check, n/a handling, and the committed config's verbatim fields and
+    threshold.
+- Checks: ruff format, ruff check, mypy and `uv run pytest` passed on the content of each commit,
+  run just before committing: 165 tests for `dce18e9` and `b210394`, 182 for `9d75207` and
+  `0f03586`.
+- Recorded the owner's Kaggle runs at `9d75207` (2026-09-16, run by the owner outside this session)
+  and committed their record folders with two ledger rows as `0f03586`:
+  - `20260916-075448-baseline`, compared key by key with both 2026-09-15 baseline records: metrics,
+    counts, mean train loss and data subsets are identical, and `config_hash` equals
+    `20260915-153606-baseline`'s. Apart from run identity (run_id, created_at, git_sha, checkpoint
+    path) and the keys added since, only epoch wall time and images/s differ.
+  - `20260916-075616-probe_metadata`: pooled val ACER 0.00% (0/1,346 attacks accepted, 0/654 bona
+    fide rejected); under the pre-registered rule, a strong header-level shortcut. Its
+    `predictions_path` is the rerun's `predictions.csv`.
+  - For both records: `git_dirty: false`; `config_hash` recomputed from `resolved_config.json`
+    matches; `split_sha256` equals the committed file's SHA-256; `manifest_sha256` is identical.
+  - `docs/EXPERIMENTS.md`: both rows start from `format_ledger_row` on the committed records; the
+    notes add the comparison with the earlier baselines and the decision-rule outcome.
+- `docs/PROGRESS.md` open questions: the capture-source question gains the header-level result, and
+  three questions are added (origin of the differences, whether the CNN uses the traces, pixel-level
+  shortcuts).
+
+**Broke / not verified**
+- The Kaggle console output (manifest build, baseline rerun, probe) was not pasted into this
+  session. Everything recorded comes from the committed record files; the 2026-09-16 manifest
+  build's printed counts were not seen.
+- The CNN-vs-metadata comparison is uninformative: the metadata classifier made no errors and its
+  score is constant within each class.
+- Whether the CNN uses the header-level traces is untested; the probe shows they are available, not
+  that they are used.
+- Whether the class-level differences come from the original CelebA-Spoof release or from this
+  Kaggle mirror is unknown. Pixel-level shortcuts are untested.
+- The no-pixel-decode spy test ran only locally (Pillow 12.3.0, scikit-learn 1.9.1). The Kaggle probe
+  ran with Pillow 11.3.0 and scikit-learn 1.6.1.
+- One local pytest run took 61.6 s right after `ruff format`; the next two took 4.21 s and 4.46 s,
+  with no test slower than 0.61 s. The slow run did not reproduce.
+- `docs/SCHEMA.md` §3 and `docs/EXPERIMENTS.md` still describe two committed files per run; the
+  probe folder also has `probe_summary.json`.
+
+**Next**
+- Test whether the CNN uses the header-level traces, and measure the JPEG quantization tables.
+- Find out whether the quantization-table and dimension differences come from the original
+  CelebA-Spoof release or from this Kaggle mirror.
+- Pixel-level shortcuts remain untested.
+- Describe `probe_summary.json` in the SCHEMA §3 and EXPERIMENTS run-record workflow.
+- Week 2 evaluation design: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and the PRD
+  §8 consequences (a)–(c).
+- Code session: make the manifest build report `validate_attack_codes` violation counts.
+- Widen `requires-python` in `pyproject.toml` to include 3.12.
+- Set the PRD targets before the first full-train run. Write the EDA notebook.
 
 ### 2026-09-16: Seven doc gaps closed from owner decisions
 
@@ -510,8 +617,8 @@ The EDA notebook is still an open Week 1 item.
   **Closed (owner, 2026-09-16):** there are no sidecar files; a file's SHA-256 is its identity.
   - The split is identified by `split_sha256`, the SHA-256 of `configs/splits/split_assignment.csv`,
     in each run record (SCHEMA.md §2–3).
-  - Both sidecars were removed from SCHEMA.md. Storing the SHA-256 of each manifest a run reads is a
-    Next item and is not implemented.
+  - Both sidecars were removed from SCHEMA.md. Each run record stores the SHA-256 of every manifest
+    it reads as `manifest_sha256` (implemented in `b210394`).
 - Dataset license terms: can failure-gallery images appear in public reports? Can a hosted copy be
   used on Kaggle? Check before the Week 1 manifest.
 - PRD success-metric targets (APCER, BPCER, ACER, BPCER@APCER=1%, model size, CPU latency). Decide
@@ -533,7 +640,16 @@ The EDA notebook is still an open Week 1 item.
     records). `pyproject.toml` still requires Python >=3.11,<3.12, and `uv.lock` pins torch 2.14.0
     and timm 1.0.29, until `requires-python` is widened (a Next item).
 - Capture-source shortcut: not yet ruled out (owner's note on the `20260915-153606-baseline` ledger
-  row). Until it is, no baseline metric is a model-quality estimate. How to check it is TBD.
+  row). Until it is, no baseline metric is a model-quality estimate.
+  - **Header level (2026-09-16):** from header metadata alone, `20260916-075616-probe_metadata`
+    reached pooled val ACER 0.00% (0/1,346, 0/654): a strong header-level shortcut under the
+    pre-registered rule. The three questions below follow from it.
+- Do the class-level differences in JPEG quantization tables and image dimensions
+  (`reports/runs/20260916-075616-probe_metadata/probe_summary.json`) come from the original
+  CelebA-Spoof release or from this Kaggle mirror?
+- Does the CNN use these header-level traces? The probe shows they are available, not that they are
+  used. The next session tests this.
+- Pixel-level shortcuts remain untested.
 
 ## Blocked on
 
