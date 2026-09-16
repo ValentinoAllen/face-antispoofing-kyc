@@ -1,0 +1,63 @@
+{
+  "experiment": {
+    "run": {
+      "hypothesis": "Header-level metadata alone (format, dimensions, file size, JPEG tables, EXIF/ICC presence; no pixels) separates live from spoof on the baseline's 4k/2k subsets. Decision rule fixed before the run, on the primary classifier's pooled val ACER: <= 5% strong header-level shortcut; >= 25% weak header-level shortcut, pixel-level cues untested; otherwise partial.",
+      "what_changed": "Metadata probe: no pixels, HistGradientBoosting on header features",
+      "notes": "probe, not a model; same subsets and threshold as 20260915-153606-baseline"
+    },
+    "subsets": {
+      "config": "configs/baseline.yaml"
+    },
+    "features": {
+      "log1p": [
+        "width",
+        "height",
+        "pixel_count",
+        "file_size_bytes",
+        "bytes_per_pixel"
+      ]
+    },
+    "primary": {
+      "learning_rate": 0.1,
+      "max_iter": 100,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 20,
+      "l2_regularization": 0.0,
+      "max_bins": 255,
+      "early_stopping": false
+    },
+    "secondary": {
+      "c": 1.0,
+      "max_iter": 1000,
+      "impute_strategy": "median"
+    },
+    "eval": {
+      "threshold": 0.5,
+      "threshold_rule": "fixed_config"
+    }
+  },
+  "subsets": {
+    "config_path": "configs/baseline.yaml",
+    "train_subset": 4000,
+    "val_subset": 2000,
+    "seed": 42
+  },
+  "data": {
+    "dataset_root": "/kaggle/input/datasets/attentionlayer241/celeba-spoof-for-face-antispoofing/CelebA_Spoof_/CelebA_Spoof",
+    "metas_dir": "metas",
+    "protocol": "intra_test",
+    "train_label_file": "train_label.json",
+    "test_label_file": "test_label.json",
+    "conflict_policy": "exclude",
+    "excluded_subjects": [
+      "5028",
+      "7332",
+      "9735"
+    ],
+    "manifest_dir": "/kaggle/working/manifests",
+    "split_assignment_path": "configs/splits/split_assignment.csv",
+    "val_fraction": 0.1,
+    "seed": 42,
+    "stratify_bins": 10
+  }
+}

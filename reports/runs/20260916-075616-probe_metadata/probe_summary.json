@@ -1,0 +1,494 @@
+{
+  "run_id": "20260916-075616-probe_metadata",
+  "inputs": {
+    "predictions_path": "/kaggle/working/runs/20260916-075448-baseline/predictions.csv",
+    "predictions_sha256": "d9865fc31829fa9fe673369901b816a94c88564084269d84b54e537f93f01deb",
+    "pillow": "11.3.0",
+    "sklearn": "1.6.1"
+  },
+  "class_summaries": {
+    "train": {
+      "live": {
+        "n": 1321,
+        "counts": {
+          "extension": {
+            ".jpg": 1321
+          },
+          "format": {
+            "JPEG": 1321
+          },
+          "mode": {
+            "RGB": 1321
+          },
+          "jpeg_subsampling": {
+            "4:2:0": 1321
+          },
+          "jpeg_progressive": {
+            "False": 1321
+          },
+          "has_exif": {
+            "False": 1321
+          },
+          "has_icc_profile": {
+            "False": 1321
+          }
+        },
+        "numeric": {
+          "width": {
+            "n_non_null": 1321,
+            "median": 400.0,
+            "q1": 322.0,
+            "q3": 528.0,
+            "iqr": 206.0,
+            "na_reason": null
+          },
+          "height": {
+            "n_non_null": 1321,
+            "median": 500.0,
+            "q1": 389.0,
+            "q3": 640.0,
+            "iqr": 251.0,
+            "na_reason": null
+          },
+          "aspect_ratio": {
+            "n_non_null": 1321,
+            "median": 0.7511111111111111,
+            "q1": 0.668,
+            "q3": 0.9748743718592965,
+            "iqr": 0.30687437185929645,
+            "na_reason": null
+          },
+          "pixel_count": {
+            "n_non_null": 1321,
+            "median": 190000.0,
+            "q1": 130560.0,
+            "q3": 325120.0,
+            "iqr": 194560.0,
+            "na_reason": null
+          },
+          "file_size_bytes": {
+            "n_non_null": 1321,
+            "median": 26033.0,
+            "q1": 17798.0,
+            "q3": 42621.0,
+            "iqr": 24823.0,
+            "na_reason": null
+          },
+          "bytes_per_pixel": {
+            "n_non_null": 1321,
+            "median": 0.136728515625,
+            "q1": 0.111988,
+            "q3": 0.16174444444444444,
+            "iqr": 0.049756444444444436,
+            "na_reason": null
+          },
+          "jpeg_luma_quant_mean": {
+            "n_non_null": 1321,
+            "median": 29.03125,
+            "q1": 29.03125,
+            "q3": 29.03125,
+            "iqr": 0.0,
+            "na_reason": null
+          }
+        }
+      },
+      "spoof": {
+        "n": 2679,
+        "counts": {
+          "extension": {
+            ".jpg": 2679
+          },
+          "format": {
+            "JPEG": 2679
+          },
+          "mode": {
+            "RGB": 2679
+          },
+          "jpeg_subsampling": {
+            "4:2:0": 2679
+          },
+          "jpeg_progressive": {
+            "False": 2679
+          },
+          "has_exif": {
+            "False": 2679
+          },
+          "has_icc_profile": {
+            "False": 2679
+          }
+        },
+        "numeric": {
+          "width": {
+            "n_non_null": 2679,
+            "median": 450.0,
+            "q1": 450.0,
+            "q3": 450.0,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "height": {
+            "n_non_null": 2679,
+            "median": 600.0,
+            "q1": 600.0,
+            "q3": 600.0,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "aspect_ratio": {
+            "n_non_null": 2679,
+            "median": 0.75,
+            "q1": 0.75,
+            "q3": 0.75,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "pixel_count": {
+            "n_non_null": 2679,
+            "median": 270000.0,
+            "q1": 270000.0,
+            "q3": 270000.0,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "file_size_bytes": {
+            "n_non_null": 2679,
+            "median": 85942.0,
+            "q1": 73125.0,
+            "q3": 98081.5,
+            "iqr": 24956.5,
+            "na_reason": null
+          },
+          "bytes_per_pixel": {
+            "n_non_null": 2679,
+            "median": 0.3176185185185185,
+            "q1": 0.270812962962963,
+            "q3": 0.3624925925925926,
+            "iqr": 0.09167962962962961,
+            "na_reason": null
+          },
+          "jpeg_luma_quant_mean": {
+            "n_non_null": 2679,
+            "median": 5.765625,
+            "q1": 5.765625,
+            "q3": 5.765625,
+            "iqr": 0.0,
+            "na_reason": null
+          }
+        }
+      }
+    },
+    "val": {
+      "live": {
+        "n": 654,
+        "counts": {
+          "extension": {
+            ".jpg": 654
+          },
+          "format": {
+            "JPEG": 654
+          },
+          "mode": {
+            "RGB": 654
+          },
+          "jpeg_subsampling": {
+            "4:2:0": 654
+          },
+          "jpeg_progressive": {
+            "False": 654
+          },
+          "has_exif": {
+            "False": 654
+          },
+          "has_icc_profile": {
+            "False": 654
+          }
+        },
+        "numeric": {
+          "width": {
+            "n_non_null": 654,
+            "median": 396.0,
+            "q1": 314.75,
+            "q3": 533.75,
+            "iqr": 219.0,
+            "na_reason": null
+          },
+          "height": {
+            "n_non_null": 654,
+            "median": 500.0,
+            "q1": 383.25,
+            "q3": 640.0,
+            "iqr": 256.75,
+            "na_reason": null
+          },
+          "aspect_ratio": {
+            "n_non_null": 654,
+            "median": 0.7515555555555555,
+            "q1": 0.6666666666666666,
+            "q3": 0.9075,
+            "iqr": 0.24083333333333334,
+            "na_reason": null
+          },
+          "pixel_count": {
+            "n_non_null": 654,
+            "median": 187500.0,
+            "q1": 125814.0,
+            "q3": 310237.5,
+            "iqr": 184423.5,
+            "na_reason": null
+          },
+          "file_size_bytes": {
+            "n_non_null": 654,
+            "median": 24938.5,
+            "q1": 17517.0,
+            "q3": 41354.25,
+            "iqr": 23837.25,
+            "na_reason": null
+          },
+          "bytes_per_pixel": {
+            "n_non_null": 654,
+            "median": 0.1369985099766779,
+            "q1": 0.1142156115907629,
+            "q3": 0.16337315422642285,
+            "iqr": 0.04915754263565994,
+            "na_reason": null
+          },
+          "jpeg_luma_quant_mean": {
+            "n_non_null": 654,
+            "median": 29.03125,
+            "q1": 29.03125,
+            "q3": 29.03125,
+            "iqr": 0.0,
+            "na_reason": null
+          }
+        }
+      },
+      "spoof": {
+        "n": 1346,
+        "counts": {
+          "extension": {
+            ".jpg": 1346
+          },
+          "format": {
+            "JPEG": 1346
+          },
+          "mode": {
+            "RGB": 1346
+          },
+          "jpeg_subsampling": {
+            "4:2:0": 1346
+          },
+          "jpeg_progressive": {
+            "False": 1346
+          },
+          "has_exif": {
+            "False": 1346
+          },
+          "has_icc_profile": {
+            "False": 1346
+          }
+        },
+        "numeric": {
+          "width": {
+            "n_non_null": 1346,
+            "median": 450.0,
+            "q1": 450.0,
+            "q3": 480.0,
+            "iqr": 30.0,
+            "na_reason": null
+          },
+          "height": {
+            "n_non_null": 1346,
+            "median": 600.0,
+            "q1": 600.0,
+            "q3": 600.0,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "aspect_ratio": {
+            "n_non_null": 1346,
+            "median": 0.75,
+            "q1": 0.75,
+            "q3": 0.75,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "pixel_count": {
+            "n_non_null": 1346,
+            "median": 270000.0,
+            "q1": 270000.0,
+            "q3": 270000.0,
+            "iqr": 0.0,
+            "na_reason": null
+          },
+          "file_size_bytes": {
+            "n_non_null": 1346,
+            "median": 85082.5,
+            "q1": 72859.75,
+            "q3": 98283.5,
+            "iqr": 25423.75,
+            "na_reason": null
+          },
+          "bytes_per_pixel": {
+            "n_non_null": 1346,
+            "median": 0.3133814814814815,
+            "q1": 0.2682997444774151,
+            "q3": 0.3613766203703704,
+            "iqr": 0.09307687589295527,
+            "na_reason": null
+          },
+          "jpeg_luma_quant_mean": {
+            "n_non_null": 1346,
+            "median": 5.765625,
+            "q1": 5.765625,
+            "q3": 5.765625,
+            "iqr": 0.0,
+            "na_reason": null
+          }
+        }
+      }
+    }
+  },
+  "single_feature_aucs": {
+    "label": "val ROC AUC (descriptive ranking, not a PAD metric)",
+    "features": [
+      {
+        "feature": "jpeg_luma_quant_mean",
+        "value": 1.0,
+        "na_reason": null
+      },
+      {
+        "feature": "pixel_count",
+        "value": 0.9977410699274325,
+        "na_reason": null
+      },
+      {
+        "feature": "bytes_per_pixel",
+        "value": 0.9825556297740276,
+        "na_reason": null
+      },
+      {
+        "feature": "width",
+        "value": 0.9815207364895874,
+        "na_reason": null
+      },
+      {
+        "feature": "height",
+        "value": 0.9772437077125109,
+        "na_reason": null
+      },
+      {
+        "feature": "aspect_ratio",
+        "value": 0.970495317420287,
+        "na_reason": null
+      },
+      {
+        "feature": "file_size_bytes",
+        "value": 0.951285607826565,
+        "na_reason": null
+      },
+      {
+        "feature": "extension",
+        "value": 0.5,
+        "na_reason": null
+      },
+      {
+        "feature": "format",
+        "value": 0.5,
+        "na_reason": null
+      },
+      {
+        "feature": "mode",
+        "value": 0.5,
+        "na_reason": null
+      },
+      {
+        "feature": "jpeg_subsampling",
+        "value": 0.5,
+        "na_reason": null
+      },
+      {
+        "feature": "jpeg_progressive",
+        "value": 0.5,
+        "na_reason": null
+      },
+      {
+        "feature": "has_exif",
+        "value": 0.5,
+        "na_reason": null
+      },
+      {
+        "feature": "has_icc_profile",
+        "value": 0.5,
+        "na_reason": null
+      }
+    ]
+  },
+  "classifiers": {
+    "threshold": 0.5,
+    "threshold_rule": "fixed_config",
+    "primary": {
+      "model": "HistGradientBoostingClassifier",
+      "pad_metrics": {
+        "threshold": 0.5,
+        "apcer": 0.0,
+        "bpcer": 0.0,
+        "acer": 0.0,
+        "n_attack": 1346,
+        "n_bona_fide": 654,
+        "n_attack_accepted": 0,
+        "n_bona_fide_rejected": 0
+      }
+    },
+    "secondary": {
+      "model": "LogisticRegression",
+      "pad_metrics": {
+        "threshold": 0.5,
+        "apcer": 0.0,
+        "bpcer": 0.0,
+        "acer": 0.0,
+        "n_attack": 1346,
+        "n_bona_fide": 654,
+        "n_attack_accepted": 0,
+        "n_bona_fide_rejected": 0
+      }
+    }
+  },
+  "predictions_comparison": {
+    "live": {
+      "n": 654,
+      "spearman_rho": {
+        "value": null,
+        "na_reason": "a score is constant across this class"
+      },
+      "cnn_errors": 10,
+      "metadata_errors": 0,
+      "both_errors": 0,
+      "both_errors_expected_if_independent": {
+        "value": 0.0,
+        "na_reason": null
+      },
+      "cnn_errors_also_metadata_errors": {
+        "value": 0.0,
+        "na_reason": null
+      }
+    },
+    "spoof": {
+      "n": 1346,
+      "spearman_rho": {
+        "value": null,
+        "na_reason": "a score is constant across this class"
+      },
+      "cnn_errors": 25,
+      "metadata_errors": 0,
+      "both_errors": 0,
+      "both_errors_expected_if_independent": {
+        "value": 0.0,
+        "na_reason": null
+      },
+      "cnn_errors_also_metadata_errors": {
+        "value": 0.0,
+        "na_reason": null
+      }
+    }
+  }
+}
