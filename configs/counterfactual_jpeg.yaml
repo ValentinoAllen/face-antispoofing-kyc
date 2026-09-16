@@ -1,0 +1,40 @@
+# Counterfactual evaluation: does the baseline CNN use the JPEG-encoding trace of attack images?
+# Loaded by antispoof.eval.counterfactual.load_counterfactual_config and run by
+# scripts/counterfactual_eval.py. Only attack images are re-encoded, in memory, at evaluation time;
+# nothing is retrained. The model, transform, subsets and loader settings come from the evaluated
+# run's resolved_config.json, never from a copy here. Data paths come from configs/data.yaml and the
+# script flags. Configs are immutable once a run has cited them.
+
+run:
+  # Copied into the run record and the docs/EXPERIMENTS.md row. The decision rule is fixed here,
+  # before the run.
+  hypothesis: "The baseline CNN relies on the JPEG-encoding trace of attack images. Val subset, threshold 0.5, live images unchanged. Validity: reencode_same pooled APCER must be <= 5%, otherwise the test is inconclusive. Then on reencode_live_quality pooled APCER: >= 20% strong reliance; <= 5% no evidence of reliance; otherwise partial. reencode_live_quality_and_size is secondary, same bands."
+  what_changed: "Counterfactual eval: attack images re-encoded at evaluation time, no retraining"
+  notes: "same val subset and threshold as 20260915-153606-baseline; checkpoint from a rerun of configs/baseline.yaml"
+  # Seeds everything, and the draw of live train-subset image sizes for
+  # reencode_live_quality_and_size (one draw per spoof val row, in row order).
+  seed: 42
+
+baseline:
+  # Committed experiment config the --run-dir checkpoint must come from: the run's config_hash must
+  # equal this config resolved with the data paths of this run.
+  config: configs/baseline.yaml
+
+counterfactual:
+  # Evaluated in this order; identity must come first. The record's metrics are
+  # reencode_live_quality's.
+  # - identity: no change; must reproduce the --run-dir record's counts exactly.
+  # - reencode_same: spoof images decoded and re-encoded at the spoof class's quality.
+  # - reencode_live_quality: spoof images re-encoded at the live class's quality.
+  # - reencode_live_quality_and_size: spoof images resized to a drawn live train-subset image's
+  #   width and height, then re-encoded at the live quality.
+  # Class qualities come from the header-only quantization-table audit; subsampling is kept.
+  arms: [identity, reencode_same, reencode_live_quality, reencode_live_quality_and_size]
+  # PIL resampling filter for the resize in reencode_live_quality_and_size.
+  resize_filter: bicubic
+
+eval:
+  # A val image is classified as spoof iff sigmoid(logit) >= threshold. Must equal the baseline's.
+  threshold: 0.5
+  # Fixed value from this file, not fitted on val.
+  threshold_rule: fixed_config

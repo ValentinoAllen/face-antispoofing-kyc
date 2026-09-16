@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 import yaml
 
-from antispoof.training.config import TrainConfigError, load_train_config
+from antispoof.training.config import TrainConfigError, load_train_config, parse_train_config
 
 BASELINE_CONFIG = Path(__file__).resolve().parents[1] / "configs" / "baseline.yaml"
 
@@ -88,3 +88,10 @@ def test_unknown_section_raises(tmp_path: Path, baseline_document: dict[str, Any
     baseline_document["schedule"] = {"warmup": 1}
     with pytest.raises(TrainConfigError, match="top-level sections"):
         load_train_config(_write(tmp_path, baseline_document))
+
+
+def test_parse_train_config_round_trips_the_resolved_experiment() -> None:
+    config = load_train_config(BASELINE_CONFIG)
+    assert parse_train_config(config.to_dict(), "resolved_config.json") == config
+    with pytest.raises(TrainConfigError, match="resolved_config.json: expected exactly"):
+        parse_train_config({"run": {}}, "resolved_config.json")

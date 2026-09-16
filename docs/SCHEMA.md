@@ -321,6 +321,12 @@ Enforcement:
 | `error` | string | no | Present only when `status` is `failed` or `aborted`. `<ExceptionType>: <message>` of the exception that ended the run |
 | `data_subsets` | object | no | Keys `train` and `val`, each `{rows, subjects, live, spoof}` as integers: counts of the subset the run actually used |
 | `training_epochs` | array[object] | yes | Present only when `status` is `completed`; null for runs that do not train (the metadata probe). One item per epoch: `{steps: integer, images: integer, mean_loss: number, wall_time_s: number, images_per_s: number}`. Wall time includes data loading |
+| `metrics_arm` | string | no | Present only when a run evaluates another run's checkpoint under several arms (`scripts/counterfactual_eval.py`). Names the arm whose pooled metrics fill `metrics` (`reencode_live_quality`); every arm's metrics are in `counterfactual_summary.json` |
+| `source_run.run_id` | string | no | Present only when a run evaluates another run's checkpoint (`scripts/counterfactual_eval.py`). `run_id` of the evaluated run (`--run-dir`) |
+| `source_run.config_path` | string | no | Present only with `source_run`. The evaluated run's `config_path`; must be the committed baseline config |
+| `source_run.config_hash` | string | no | Present only with `source_run`. The evaluated run's `config_hash`; equals the hash of its `resolved_config.json` and of the committed baseline config resolved with this run's data paths |
+| `source_run.checkpoint` | string | no | Present only with `source_run`. Path of the checkpoint that was read. This run writes no checkpoint, so `artifacts.checkpoint` is null |
+| `source_run.checkpoint_sha256` | string | no | Present only with `source_run`. SHA-256 hex of the checkpoint file's bytes |
 | `eval_split` | string | yes | `val` or `test`; null until evaluated |
 | `threshold` | number | yes | Operating threshold used for the metrics, in [0, 1] |
 | `threshold_rule` | string | yes | How the threshold was chosen (e.g. `apcer_on_val`) |

@@ -103,10 +103,29 @@ def load_train_config(path: Path) -> TrainConfig:
     """
     with path.open(encoding="utf-8") as handle:
         document = yaml.safe_load(handle)
+    return parse_train_config(document, str(path))
+
+
+def parse_train_config(document: object, source: str) -> TrainConfig:
+    """Parse and validate an experiment config that is already loaded as nested plain values.
+
+    Used for YAML files and for the ``experiment`` section of a run's ``resolved_config.json``.
+
+    Args:
+        document: The parsed document, e.g. the output of :meth:`TrainConfig.to_dict`.
+        source: Where the document came from, used in error messages.
+
+    Returns:
+        The validated configuration.
+
+    Raises:
+        TrainConfigError: If sections or keys are missing or unknown, a value has the wrong type,
+            or a value is out of range.
+    """
     section_types = {field.name: field.type for field in fields(TrainConfig)}
     if not isinstance(document, dict) or set(document) != set(section_types):
         raise TrainConfigError(
-            f"{path}: expected exactly the top-level sections {sorted(section_types)}."
+            f"{source}: expected exactly the top-level sections {sorted(section_types)}."
         )
     config = TrainConfig(
         **{name: parse_section(name, document[name], kind) for name, kind in section_types.items()}
