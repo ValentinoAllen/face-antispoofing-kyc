@@ -34,7 +34,7 @@ from torch import nn
 from antispoof.data import labels
 from antispoof.data.build import summarize_split
 from antispoof.data.config import DataConfig
-from antispoof.data.dataset import DatasetItem, ImageTransform, ManifestDataset, load_rgb_image
+from antispoof.data.dataset import ImageTransform, ManifestDataset
 from antispoof.data.transforms import build_baseline_transform
 from antispoof.eval.jpeg_tables import (
     CLASS_NAME,
@@ -488,20 +488,9 @@ class CounterfactualDataset(ManifestDataset):
             ImageLoadError: If the image is missing or cannot be decoded.
             ReencodeError: If a re-encoded luma table does not match its target quality.
         """
-        image = load_rgb_image(self._dataset_root / self._image_paths[index])
+        image = super().load_image(index)
         edit = self._edits.get(index)
         return image if edit is None else reencode_image(image, edit.reencoding)
-
-    def __getitem__(self, index: int) -> DatasetItem:
-        """Load, edit and transform one image.
-
-        Args:
-            index: Positional row index in the manifest.
-
-        Returns:
-            ``(image, label, index)``.
-        """
-        return self._transform(self.load_image(index)), self._labels[index], index
 
 
 def draw_live_sizes(headers: pd.DataFrame, n: int, seed: int) -> list[LiveSize]:

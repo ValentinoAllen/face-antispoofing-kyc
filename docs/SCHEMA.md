@@ -381,6 +381,11 @@ Enforcement:
 | `source_run.config_hash` | string | no | Present only with `source_run`. The evaluated run's `config_hash`; equals the hash of its `resolved_config.json` and of the committed baseline config resolved with this run's data paths |
 | `source_run.checkpoint` | string | no | Present only with `source_run`. Path of the checkpoint that was read. This run writes no checkpoint, so `artifacts.checkpoint` is null |
 | `source_run.checkpoint_sha256` | string | no | Present only with `source_run`. SHA-256 hex of the checkpoint file's bytes |
+| `cache.name` | string | no | Present only when the experiment config sets `cache` (`configs/baseline_cache.yaml`). The cache's identity, which equalled the `name` in its `cache_summary.json` (§1.5). A directory alone does not identify a cache |
+| `cache.dir` | string | no | Present only with `cache`. The cache root the run read, after the `scripts/train.py --cache-dir` override |
+| `cache.settings` | object | no | Present only with `cache`. The `settings` block of that cache's `cache_summary.json`, copied verbatim: how the images the run trained on were built |
+| `cache.summary_sha256` | string | no | Present only with `cache`. SHA-256 hex of `cache_summary.json` |
+| `cache.cache_manifest_sha256` | object | no | Present only with `cache`. Map from each cache manifest's file name to the SHA-256 hex of its bytes. The run refuses a cache whose `source_manifest_sha256` differs from its own `manifest_sha256`, or that does not cover every subset row |
 | `eval_split` | string | yes | `val` or `test`; null until evaluated |
 | `threshold` | number | yes | Operating threshold used for the metrics, in [0, 1] |
 | `threshold_rule` | string | yes | How the threshold was chosen (e.g. `apcer_on_val`) |
@@ -402,6 +407,10 @@ Enforcement:
 | `notes` | string | yes | Free text |
 
 Metrics are stored as fractions in [0, 1]. Docs and reports display them as percentages.
+
+A run whose experiment config has no `cache` section resolves, and therefore hashes, exactly as it
+did before that section existed: `cache` is left out of `resolved_config.json` entirely, not written
+as null. Every record in `reports/runs/` predates the section and stays reproducible.
 
 A run that measures the data rather than a model leaves every `metrics` value null and gets no
 `EXPERIMENTS.md` row. `scripts/audit_jpeg_tables.py` is the only such run today; it prints that fact

@@ -6,6 +6,7 @@ Synthetic images under ``tmp_path`` only; nothing reads ``data/``.
 import dataclasses
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from PIL import Image
 from antispoof.data import cache, cache_build, labels
 from antispoof.data.build import SplitOutputs, write_outputs
 from antispoof.data.config import DataConfig
+from antispoof.data.dataset import ImageLoadError
 from antispoof.data.manifest import MANIFEST_COLUMNS, ManifestError, build_manifest
 from antispoof.eval.jpeg_tables import read_jpeg_header, reference_tables
 
@@ -441,3 +443,127 @@ def test_unknown_cache_section_or_key_is_rejected(tmp_path: Path) -> None:
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     with pytest.raises(cache_build.CacheConfigError, match="top-level sections"):
         cache_build.load_cache_config(path)
+
+
+def _subsets(data_config: DataConfig) -> dict[str, pd.DataFrame]:
+    return {
+        split: pd.read_csv(
+            data_config.manifest_dir / f"manifest_{split}.csv", dtype={"subject_id": str}
+        )
+        for split in SPLITS
+    }
+
+
+def _manifest_sha256(data_config: DataConfig) -> dict[str, str]:
+    return {
+        f"manifest_{split}.csv": hashlib.sha256(
+            (data_config.manifest_dir / f"manifest_{split}.csv").read_bytes()
+        ).hexdigest()
+        for split in SPLITS
+    }
+
+
+def test_load_cache_binds_a_matching_cache(cache_data: DataConfig, tmp_path: Path) -> None:
+    report = cache_build.build_cache(_inputs(cache_data, tmp_path / "cache"))
+    subsets = _subsets(cache_data)
+    binding = cache.load_cache(report.cache_dir, "cache_v1", subsets, _manifest_sha256(cache_data))
+    assert binding.name == "cache_v1"
+    assert binding.settings["quality"] == TARGET_QUALITY
+    assert set(binding.cached_paths) == set(SPLITS)
+    for split in SPLITS:
+        assert len(binding.cached_paths[split]) == ROWS[split]
+        assert binding.cached_paths[split] == [
+            cache.cached_path(str(image_path), split) for image_path in subsets[split]["image_path"]
+        ]
+    entry = binding.record_entry()
+    assert entry["name"] == "cache_v1"
+    assert entry["dir"] == report.cache_dir.as_posix()
+    assert entry["settings"] == report.summary["settings"]
+    assert set(entry["cache_manifest_sha256"]) == {
+        f"cache_manifest_{split}.csv" for split in SPLITS
+    }
+    assert (
+        entry["summary_sha256"]
+        == hashlib.sha256(
+            (report.cache_dir / cache.CACHE_SUMMARY_FILENAME).read_bytes()
+        ).hexdigest()
+    )
+
+
+def test_load_cache_rejects_another_cache_name(cache_data: DataConfig, tmp_path: Path) -> None:
+    report = cache_build.build_cache(_inputs(cache_data, tmp_path / "cache"))
+    with pytest.raises(cache.CacheMismatchError, match="config asks for 'cache_v2'"):
+        cache.load_cache(
+            report.cache_dir, "cache_v2", _subsets(cache_data), _manifest_sha256(cache_data)
+        )
+
+
+def test_load_cache_rejects_a_cache_built_from_other_manifests(
+    cache_data: DataConfig, tmp_path: Path
+) -> None:
+    report = cache_build.build_cache(_inputs(cache_data, tmp_path / "cache"))
+    subsets = _subsets(cache_data)
+    path = cache_data.manifest_dir / "manifest_val.csv"
+    path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(cache.CacheMismatchError, match="but this run reads"):
+        cache.load_cache(report.cache_dir, "cache_v1", subsets, _manifest_sha256(cache_data))
+
+
+def test_load_cache_rejects_a_cache_that_misses_rows(
+    cache_data: DataConfig, tmp_path: Path
+) -> None:
+    report = cache_build.build_cache(_inputs(cache_data, tmp_path / "cache", limit=2))
+    with pytest.raises(cache.CacheMismatchError, match="rows this run needs"):
+        cache.load_cache(
+            report.cache_dir, "cache_v1", _subsets(cache_data), _manifest_sha256(cache_data)
+        )
+
+
+def test_load_cache_rejects_a_directory_that_is_not_a_cache(
+    cache_data: DataConfig, tmp_path: Path
+) -> None:
+    with pytest.raises(cache.CacheError, match="cache_summary.json missing"):
+        cache.load_cache(
+            tmp_path / "empty", "cache_v1", _subsets(cache_data), _manifest_sha256(cache_data)
+        )
+
+
+def test_cached_dataset_reads_the_cache_and_keeps_labels_and_row_indices(
+    cache_data: DataConfig, tmp_path: Path
+) -> None:
+    import timm
+
+    from antispoof.data.transforms import build_baseline_transform
+
+    report = cache_build.build_cache(_inputs(cache_data, tmp_path / "cache"))
+    subsets = _subsets(cache_data)
+    binding = cache.load_cache(report.cache_dir, "cache_v1", subsets, _manifest_sha256(cache_data))
+    val = subsets[labels.SPLIT_VAL]
+    transform = build_baseline_transform(
+        16, timm.create_model("test_efficientnet", pretrained=False, num_classes=1)
+    )
+    dataset = cache.CachedManifestDataset(
+        val, report.cache_dir, transform, binding.cached_paths[labels.SPLIT_VAL]
+    )
+    assert len(dataset) == ROWS[labels.SPLIT_VAL]
+    for index in range(len(dataset)):
+        image, label, row_index = dataset[index]
+        assert image.shape == (3, 16, 16)
+        assert (label, row_index) == (float(val.loc[index, "label"]), index)
+        assert dataset.load_image(index).size == (TINY_SIZE, TINY_SIZE)
+
+    # The pixels come from the cache, not the dataset root.
+    for image_path in val["image_path"]:
+        (cache_data.dataset_root / image_path).unlink()
+    assert dataset[0][0].shape == (3, 16, 16)
+
+    missing = report.cache_dir / binding.cached_paths[labels.SPLIT_VAL][1]
+    missing.unlink()
+    with pytest.raises(ImageLoadError, match=re.escape(str(missing))):
+        dataset[1]
+
+
+def test_cached_dataset_needs_one_path_per_row(cache_data: DataConfig, tmp_path: Path) -> None:
+    val = _subsets(cache_data)[labels.SPLIT_VAL]
+    with pytest.raises(ValueError, match="cached_paths has 1 entries for 4 manifest rows"):
+        cache.CachedManifestDataset(val, tmp_path, lambda image: image, ["val/a/live/b.jpg"])  # type: ignore[arg-type]

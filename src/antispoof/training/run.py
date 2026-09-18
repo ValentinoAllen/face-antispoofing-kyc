@@ -28,8 +28,9 @@ import torch
 
 from antispoof.data import labels
 from antispoof.data.build import MANIFEST_FILENAME, summarize_split
+from antispoof.data.cache import CacheBinding, CachedManifestDataset, load_cache
 from antispoof.data.config import DataConfig
-from antispoof.data.dataset import ManifestDataset, make_subset
+from antispoof.data.dataset import ImageTransform, ManifestDataset, make_subset
 from antispoof.data.manifest import read_manifest
 from antispoof.data.splits import (
     SPLIT_ASSIGNMENT_COLUMNS,
@@ -167,6 +168,62 @@ def load_manifests(splits: Sequence[str], data_config: DataConfig) -> dict[str, 
             summary.spoof,
         )
     return manifests
+
+
+def bind_cache(
+    train_config: TrainConfig,
+    data_config: DataConfig,
+    subsets: Mapping[str, pd.DataFrame],
+) -> CacheBinding | None:
+    """Bind the run to the cache its config points at, or return ``None`` for an uncached run.
+
+    Args:
+        train_config: The experiment config; ``cache`` is unset for an uncached run.
+        data_config: The data config after CLI path overrides.
+        subsets: The subsets the run will use.
+
+    Returns:
+        The binding, or ``None`` when the config sets no cache.
+
+    Raises:
+        CacheError, CacheMismatchError: If the cache is missing, malformed, or does not match the
+            manifests this run reads.
+    """
+    if train_config.cache is None:
+        return None
+    return load_cache(
+        Path(train_config.cache.dir),
+        train_config.cache.name,
+        subsets,
+        {
+            path.name: reproducibility.sha256_file(path)
+            for path in manifest_paths(data_config).values()
+        },
+    )
+
+
+def make_dataset(
+    subset: pd.DataFrame,
+    split: str,
+    dataset_root: Path,
+    transform: ImageTransform,
+    binding: CacheBinding | None,
+) -> ManifestDataset:
+    """Build the dataset of one split, reading either the dataset root or the cache.
+
+    Args:
+        subset: The split's subset rows.
+        split: The split name.
+        dataset_root: Directory the manifest's ``image_path`` values are relative to.
+        transform: Applied to every decoded RGB image.
+        binding: The bound cache, or ``None`` to read the dataset root.
+
+    Returns:
+        A :class:`ManifestDataset`, or a :class:`CachedManifestDataset` when a cache is bound.
+    """
+    if binding is None:
+        return ManifestDataset(subset, dataset_root, transform)
+    return CachedManifestDataset(subset, binding.cache_dir, transform, binding.cached_paths[split])
 
 
 def load_subsets(train_config: TrainConfig, data_config: DataConfig) -> dict[str, pd.DataFrame]:
@@ -412,8 +469,8 @@ def run_baseline(inputs: RunInputs) -> RunResult:
         The completed record, the run directory and per-epoch stats.
 
     Raises:
-        TrainConfigError, SplitLeakageError, SplitCoverageError, ProvenanceError: Before the run
-            directory is created.
+        TrainConfigError, SplitLeakageError, SplitCoverageError, CacheMismatchError,
+            ProvenanceError: Before the run directory is created.
         Exception: Anything raised while training or evaluating (e.g. ``ImageLoadError``). The
             record is first rewritten with status ``failed`` (``aborted`` on
             ``KeyboardInterrupt``).
@@ -421,6 +478,7 @@ def run_baseline(inputs: RunInputs) -> RunResult:
     config = inputs.train_config
     validate_train_config(config)
     subsets = load_subsets(config, inputs.data_config)
+    binding = bind_cache(config, inputs.data_config, subsets)
     device = resolve_device(config.run.device)
     determinism = reproducibility.seed_everything(config.run.seed)
     created_at = datetime.now(UTC)
@@ -430,13 +488,15 @@ def run_baseline(inputs: RunInputs) -> RunResult:
     record["data_subsets"] = {
         name: asdict(summarize_split(frame)) for name, frame in subsets.items()
     }
+    if binding is not None:
+        record["cache"] = binding.record_entry()
     run_dir = inputs.output_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     write_json(resolved_config(config, inputs.data_config), run_dir / RESOLVED_CONFIG_FILENAME)
     write_json(record, run_dir / RECORD_FILENAME)
     logger.info("Run %s started on %s; writing to %s", run_id, device, run_dir)
     try:
-        epochs = _train_and_evaluate(inputs, subsets, device, run_dir, record)
+        epochs = _train_and_evaluate(inputs, subsets, binding, device, run_dir, record)
     except KeyboardInterrupt as error:
         close_failed_record(record, STATUS_ABORTED, error, run_dir)
         raise
@@ -546,6 +606,7 @@ def write_json(payload: Mapping[str, Any], path: Path) -> None:
 def _train_and_evaluate(
     inputs: RunInputs,
     subsets: Mapping[str, pd.DataFrame],
+    binding: CacheBinding | None,
     device: torch.device,
     run_dir: Path,
     record: dict[str, Any],
@@ -555,7 +616,7 @@ def _train_and_evaluate(
     transform = build_baseline_transform(config.model.input_size, model)
     loaders = {
         split: make_loader(
-            ManifestDataset(frame, inputs.data_config.dataset_root, transform),
+            make_dataset(frame, split, inputs.data_config.dataset_root, transform, binding),
             config.data,
             shuffle=split == labels.SPLIT_TRAIN,
             seed=config.run.seed,

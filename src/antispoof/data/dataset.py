@@ -83,6 +83,23 @@ class ManifestDataset(Dataset[DatasetItem]):
         """Return the number of manifest rows."""
         return len(self._image_paths)
 
+    def load_image(self, index: int) -> Image.Image:
+        """Decode the image of one row, in RGB.
+
+        This is the only place a row's pixels are located. Subclasses override it to read them
+        from elsewhere, or to edit them, without changing how items are labelled or indexed.
+
+        Args:
+            index: Positional row index in the manifest.
+
+        Returns:
+            The RGB image the transform receives.
+
+        Raises:
+            ImageLoadError: If the image is missing or cannot be decoded.
+        """
+        return load_rgb_image(self._dataset_root / self._image_paths[index])
+
     def __getitem__(self, index: int) -> DatasetItem:
         """Load, convert and transform one image.
 
@@ -95,8 +112,7 @@ class ManifestDataset(Dataset[DatasetItem]):
         Raises:
             ImageLoadError: If the image is missing or cannot be decoded.
         """
-        image = load_rgb_image(self._dataset_root / self._image_paths[index])
-        return self._transform(image), self._labels[index], index
+        return self._transform(self.load_image(index)), self._labels[index], index
 
 
 def make_subset(manifest: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:

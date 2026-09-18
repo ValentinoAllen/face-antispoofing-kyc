@@ -1,0 +1,54 @@
+# Cached baseline: the same baseline trained on the size- and quality-normalized cache v1.
+# A copy of configs/baseline.yaml, which is immutable because recorded runs cite it. Everything
+# below model: is identical; only the run: strings and the cache: section differ.
+# Loaded by antispoof.training.config.load_train_config and run by scripts/train.py.
+
+run:
+  # One sentence; copied into the run record and the docs/EXPERIMENTS.md row. The decision rule is
+  # fixed here, before the run.
+  hypothesis: "Training the same baseline on the size- and quality-normalized cache removes the header-level class signature. Pre-registered, on val pooled APCER relative to the 1.86% uncached baseline: a rise to >= 3x means the uncached run depended substantially on capture-source cues; <= 1.5x means it did not; in between is partial. BPCER is reported but not part of the rule."
+  what_changed: "Same baseline on normalized cache (256px, q90, no face crop)"
+  notes: "cache v1; same subsets, seed and threshold as the uncached baseline"
+  seed: 42
+  # auto = cuda if available, else cpu. mps is not used.
+  device: auto
+
+cache:
+  # Must equal the name in the cache's cache_summary.json: a directory alone does not identify a
+  # cache. The run record stores this name, the resolved directory, the cache settings and the
+  # cache manifests' SHA-256s.
+  name: cache_v1
+  # Built by scripts/build_cache.py with configs/cache_v1.yaml. Machine-specific, so
+  # scripts/train.py --cache-dir overrides it.
+  dir: /kaggle/working/cache
+
+model:
+  # timm model name. Normalization mean/std and resize interpolation come from its pretrained config.
+  backbone: mobilenetv3_large_100
+  pretrained: true
+  # Side length of the square input, in pixels.
+  input_size: 224
+
+data:
+  # Seeded, label-stratified subsets of manifest_train.csv and manifest_val.csv (seed: run.seed).
+  train_subset: 4000
+  val_subset: 2000
+  batch_size: 64
+  num_workers: 4
+
+optim:
+  # AdamW on BCEWithLogitsLoss, constant learning rate. AMP on CUDA only.
+  lr: 3.0e-4
+  weight_decay: 1.0e-2
+  epochs: 1
+
+eval:
+  # A val image is classified as spoof iff sigmoid(logit) >= threshold.
+  threshold: 0.5
+  # Fixed value from this file, not fitted on val.
+  threshold_rule: fixed_config
+
+wandb:
+  # Disabled: W&B is never imported and no API key is needed.
+  enabled: false
+  project: antispoof

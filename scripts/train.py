@@ -3,10 +3,15 @@
 Run on Kaggle from the repository root, with the ``antispoof`` package importable:
 
     python scripts/train.py --data-config configs/data.yaml --config configs/baseline.yaml \
-        --manifest-dir /kaggle/working/manifests --output-dir /kaggle/working/runs
+        --manifest-dir /kaggle/working/manifests --output-dir /kaggle/working/runs \
+        [--cache-dir PATH] [--dataset-root PATH]
 
 Writes <output-dir>/<run_id>/ (record.json, checkpoint.pt, predictions.csv, resolved_config.json).
 The last line printed is one docs/EXPERIMENTS.md row. The test split is not read.
+
+--cache-dir moves where an experiment config's normalized image cache lives, for example
+configs/baseline_cache.yaml on a machine other than Kaggle. It does not turn caching on: a config
+with no cache section reads the dataset root, exactly as before the flag existed.
 """
 
 import argparse
@@ -15,7 +20,7 @@ import logging
 from pathlib import Path
 
 from antispoof.data.config import load_data_config
-from antispoof.training.config import load_train_config
+from antispoof.training.config import load_train_config, with_cache_dir
 from antispoof.training.reproducibility import find_repo_root
 from antispoof.training.run import RunInputs, format_ledger_row, format_run_summary, run_baseline
 
@@ -30,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-dir", type=Path, required=True, help="Parent of the run dir.")
     parser.add_argument("--dataset-root", type=Path, help="Overrides data.dataset_root.")
+    parser.add_argument("--cache-dir", type=Path, help="Overrides the config's cache.dir.")
     return parser.parse_args()
 
 
@@ -44,7 +50,7 @@ def main() -> None:
     )
     result = run_baseline(
         RunInputs(
-            train_config=load_train_config(args.config),
+            train_config=with_cache_dir(load_train_config(args.config), args.cache_dir),
             config_path=args.config,
             data_config=data_config,
             output_dir=args.output_dir,

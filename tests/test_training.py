@@ -12,8 +12,10 @@ import pandas as pd
 import pytest
 import torch
 
-from antispoof.data import labels
+from antispoof.data import cache, cache_build, labels
 from antispoof.data.build import MANIFEST_FILENAME, SplitOutputs, write_outputs
+from antispoof.data.cache import CacheMismatchError
+from antispoof.data.cache_build import load_cache_config
 from antispoof.data.config import CONFLICT_EXCLUDE, DataConfig
 from antispoof.data.dataset import ImageLoadError, ManifestDataset
 from antispoof.data.manifest import build_manifest
@@ -21,7 +23,7 @@ from antispoof.data.splits import SplitLeakageError
 from antispoof.data.transforms import build_baseline_transform
 from antispoof.models.factory import build_model
 from antispoof.training import reproducibility
-from antispoof.training.config import TrainConfig, load_train_config
+from antispoof.training.config import CacheRefConfig, TrainConfig, load_train_config
 from antispoof.training.loop import (
     PREDICTION_COLUMNS,
     SCORE_COLUMN,
@@ -43,6 +45,8 @@ from antispoof.training.run import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_CONFIG = REPO_ROOT / "configs" / "baseline.yaml"
+BASELINE_CACHE_CONFIG = REPO_ROOT / "configs" / "baseline_cache.yaml"
+CACHE_CONFIG = REPO_ROOT / "configs" / "cache_v1.yaml"
 CPU = torch.device("cpu")
 
 TRAIN_SUBJECTS = {"0001": (2, 2), "0002": (2, 2)}
@@ -50,6 +54,7 @@ VAL_SUBJECTS = {"0003": (2, 2), "0004": (2, 2)}
 TEST_SUBJECT = "0005"
 IMAGES_PER_SPLIT = 8
 TINY_BATCH = 4
+CACHED_SIDE = 32
 
 CONTRACT_FIELDS = {
     "run_id",
@@ -273,3 +278,138 @@ def test_loss_drops_when_overfitting_black_versus_white(synthetic_data: DataConf
     ]
     assert losses[-1] < OVERFIT_MAX_FINAL_LOSS_FRACTION * losses[0], losses
     assert losses[-1] < OVERFIT_MAX_FINAL_LOSS, losses
+
+
+def _build_tiny_cache(data_config: DataConfig, cache_dir: Path) -> None:
+    """Build a cache of both splits at a small target size, from the committed cache config."""
+    config = load_cache_config(CACHE_CONFIG)
+    cache_build.build_cache(
+        cache_build.CacheInputs(
+            config=dataclasses.replace(
+                config, cache=dataclasses.replace(config.cache, target_size=CACHED_SIDE)
+            ),
+            config_path=CACHE_CONFIG,
+            data_config=data_config,
+            splits=(labels.SPLIT_TRAIN, labels.SPLIT_VAL),
+            output_dir=cache_dir,
+            repo_root=REPO_ROOT,
+        )
+    )
+
+
+def _cached_config(cache_dir: Path) -> TrainConfig:
+    cached = load_train_config(BASELINE_CACHE_CONFIG)
+    return dataclasses.replace(
+        _tiny_config(), run=cached.run, cache=CacheRefConfig(name="cache_v1", dir=str(cache_dir))
+    )
+
+
+def test_an_uncached_run_records_no_cache(synthetic_data: DataConfig, tmp_path: Path) -> None:
+    result = run_baseline(_run_inputs(synthetic_data, tmp_path / "runs"))
+    assert "cache" not in result.record
+    resolved = json.loads((result.run_dir / RESOLVED_CONFIG_FILENAME).read_text(encoding="utf-8"))
+    assert "cache" not in resolved["experiment"]
+
+
+def test_run_baseline_reads_the_cache_and_records_it(
+    synthetic_data: DataConfig, tmp_path: Path
+) -> None:
+    cache_dir = tmp_path / "cache"
+    _build_tiny_cache(synthetic_data, cache_dir)
+    # Deleting every source image proves the pixels can only come from the cache.
+    for split in (labels.SPLIT_TRAIN, labels.SPLIT_VAL):
+        manifest = pd.read_csv(synthetic_data.manifest_dir / MANIFEST_FILENAME.format(split=split))
+        for image_path in manifest["image_path"]:
+            (synthetic_data.dataset_root / image_path).unlink()
+
+    inputs = dataclasses.replace(
+        _run_inputs(synthetic_data, tmp_path / "runs"),
+        train_config=_cached_config(cache_dir),
+        config_path=BASELINE_CACHE_CONFIG,
+    )
+    result = run_baseline(inputs)
+
+    record = result.record
+    assert record["status"] == "completed"
+    assert record["config_path"] == "configs/baseline_cache.yaml"
+    assert record["run_id"].endswith("-baseline_cache")
+    assert (record["metrics"]["n_attack"], record["metrics"]["n_bona_fide"]) == (4, 4)
+    summary = json.loads((cache_dir / cache.CACHE_SUMMARY_FILENAME).read_text(encoding="utf-8"))
+    assert record["cache"] == {
+        "name": "cache_v1",
+        "dir": cache_dir.as_posix(),
+        "settings": summary["settings"],
+        "summary_sha256": hashlib.sha256(
+            (cache_dir / cache.CACHE_SUMMARY_FILENAME).read_bytes()
+        ).hexdigest(),
+        "cache_manifest_sha256": {
+            f"cache_manifest_{split}.csv": hashlib.sha256(
+                (cache_dir / f"cache_manifest_{split}.csv").read_bytes()
+            ).hexdigest()
+            for split in (labels.SPLIT_TRAIN, labels.SPLIT_VAL)
+        },
+    }
+    assert record["cache"]["settings"]["target_size"] == CACHED_SIDE
+    assert record["cache"]["settings"]["face_crop"] is False
+    resolved = json.loads((result.run_dir / RESOLVED_CONFIG_FILENAME).read_text(encoding="utf-8"))
+    assert resolved["experiment"]["cache"] == {"name": "cache_v1", "dir": str(cache_dir)}
+    assert record["config_hash"] == reproducibility.config_hash(resolved)
+    predictions = pd.read_csv(result.run_dir / PREDICTIONS_FILENAME)
+    assert predictions["image_path"].str.startswith("Data/").all(), (
+        "predictions must carry the source image_path, not the cached one"
+    )
+
+
+def test_the_same_run_without_the_cache_cannot_find_its_images(
+    synthetic_data: DataConfig, tmp_path: Path
+) -> None:
+    cache_dir = tmp_path / "cache"
+    _build_tiny_cache(synthetic_data, cache_dir)
+    manifest = pd.read_csv(
+        synthetic_data.manifest_dir / MANIFEST_FILENAME.format(split=labels.SPLIT_TRAIN)
+    )
+    for image_path in manifest["image_path"]:
+        (synthetic_data.dataset_root / image_path).unlink()
+    with pytest.raises(ImageLoadError, match="Image file not found"):
+        run_baseline(_run_inputs(synthetic_data, tmp_path / "runs"))
+
+
+def test_a_cache_that_misses_rows_fails_before_the_run_directory_is_created(
+    synthetic_data: DataConfig, tmp_path: Path
+) -> None:
+    cache_dir = tmp_path / "cache"
+    _build_tiny_cache(synthetic_data, cache_dir)
+    path = cache_dir / f"cache_manifest_{labels.SPLIT_VAL}.csv"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    path.write_text("".join(lines[:-1]), encoding="utf-8")
+
+    output_dir = tmp_path / "runs"
+    inputs = dataclasses.replace(
+        _run_inputs(synthetic_data, output_dir),
+        train_config=_cached_config(cache_dir),
+        config_path=BASELINE_CACHE_CONFIG,
+    )
+    with pytest.raises(CacheMismatchError, match="rows this run needs"):
+        run_baseline(inputs)
+    assert not output_dir.exists(), "a mismatched cache must leave no run directory behind"
+
+
+def test_a_cache_built_from_other_manifests_fails_the_run(
+    synthetic_data: DataConfig, tmp_path: Path
+) -> None:
+    cache_dir = tmp_path / "cache"
+    _build_tiny_cache(synthetic_data, cache_dir)
+    summary_path = cache_dir / cache.CACHE_SUMMARY_FILENAME
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["source_manifest_sha256"]["manifest_val.csv"] = "0" * 64
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    output_dir = tmp_path / "runs"
+    inputs = dataclasses.replace(
+        _run_inputs(synthetic_data, output_dir),
+        train_config=_cached_config(cache_dir),
+        config_path=BASELINE_CACHE_CONFIG,
+    )
+    with pytest.raises(CacheMismatchError, match="but this run reads"):
+        run_baseline(inputs)
+    assert not output_dir.exists()
