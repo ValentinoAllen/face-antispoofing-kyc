@@ -3,10 +3,11 @@
 import dataclasses
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
-from PIL import Image
+from PIL import Image, ImageFile
 
 from antispoof.data import labels
 from antispoof.data.config import DataConfig, load_data_config
@@ -104,3 +105,23 @@ def tmp_data_config(tmp_path: Path, repo_data_config: DataConfig) -> DataConfig:
         manifest_dir=tmp_path / "manifests",
         split_assignment_path=tmp_path / "splits" / "split_assignment.csv",
     )
+
+
+@pytest.fixture
+def spy_on_file_loads(monkeypatch: pytest.MonkeyPatch) -> Callable[[], list[str]]:
+    """Return a function that starts recording pixel loads of images opened from files or bytes."""
+
+    def install() -> list[str]:
+        calls: list[str] = []
+        for owner in (Image.Image, ImageFile.ImageFile):
+            original = owner.load
+
+            def spy(self: Image.Image, *args: Any, _original: Any = original, **kwargs: Any) -> Any:
+                if isinstance(self, ImageFile.ImageFile):
+                    calls.append(type(self).__name__)
+                return _original(self, *args, **kwargs)
+
+            monkeypatch.setattr(owner, "load", spy)
+        return calls
+
+    return install

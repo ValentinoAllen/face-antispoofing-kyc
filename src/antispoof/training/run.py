@@ -17,7 +17,7 @@ and :func:`write_json`) are public so that other entry points writing a run reco
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,6 +62,9 @@ STATUS_COMPLETED = "completed"
 STATUS_FAILED = "failed"
 STATUS_ABORTED = "aborted"
 
+TRAIN_AND_VAL = (labels.SPLIT_TRAIN, labels.SPLIT_VAL)
+"""The splits a run that trains or evaluates a model reads. The test split is not among them."""
+
 EMPTY_CELL = "—"
 POOLED_SUFFIX = " (pooled)"
 DIRTY_NOTE = "git_dirty: not citable; "
@@ -100,6 +103,8 @@ class RecordHeader:
         repo_root: The repository root, for the git state and the repo-relative config path.
         data_config: Split assignment path and manifest directory, after CLI overrides.
         resolved_config: The fully resolved, JSON-compatible config that is hashed.
+        manifest_splits: Splits whose manifests the run reads and hashes into ``manifest_sha256``.
+            Defaults to train and val.
     """
 
     hypothesis: str
@@ -110,20 +115,24 @@ class RecordHeader:
     repo_root: Path
     data_config: DataConfig
     resolved_config: Mapping[str, Any]
+    manifest_splits: tuple[str, ...] = TRAIN_AND_VAL
 
 
-def manifest_paths(data_config: DataConfig) -> dict[str, Path]:
+def manifest_paths(
+    data_config: DataConfig, splits: Sequence[str] = TRAIN_AND_VAL
+) -> dict[str, Path]:
     """Return the manifest file of each split a run reads, in reading order.
 
     Args:
         data_config: Holds the manifest directory.
+        splits: Splits to include, in reading order. The default is train and val; only a run that
+            reads the test split without evaluating a model passes all three.
 
     Returns:
-        ``{"train": <manifest_dir>/manifest_train.csv, "val": <manifest_dir>/manifest_val.csv}``.
+        ``{split: <manifest_dir>/manifest_<split>.csv}``.
     """
     return {
-        split: data_config.manifest_dir / MANIFEST_FILENAME.format(split=split)
-        for split in (labels.SPLIT_TRAIN, labels.SPLIT_VAL)
+        split: data_config.manifest_dir / MANIFEST_FILENAME.format(split=split) for split in splits
     }
 
 
@@ -235,7 +244,8 @@ def build_record(
 
     ``split_sha256`` hashes the split assignment file, which is the split's identity
     (``docs/SCHEMA.md`` §2). ``manifest_sha256`` hashes each manifest the run reads
-    (:func:`manifest_paths`), catching a changed manifest even when ``git_sha`` is unchanged.
+    (:func:`manifest_paths` over ``header.manifest_splits``), catching a changed manifest even when
+    ``git_sha`` is unchanged.
 
     Args:
         header: The run description and provenance inputs.
@@ -267,7 +277,7 @@ def build_record(
         "split_sha256": reproducibility.sha256_file(split_path),
         "manifest_sha256": {
             path.name: reproducibility.sha256_file(path)
-            for path in manifest_paths(header.data_config).values()
+            for path in manifest_paths(header.data_config, header.manifest_splits).values()
         },
         "environment": dict(environment),
         "status": STATUS_RUNNING,

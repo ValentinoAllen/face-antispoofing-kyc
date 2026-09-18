@@ -286,7 +286,10 @@ Enforcement:
   `predictions.csv`.
   - The record is first written with `status: running` and rewritten when the run ends.
   - **Committed copy:** the owner copies `record.json` and `resolved_config.json` into
-    `reports/runs/<run_id>/` and commits them together with the run's `EXPERIMENTS.md` row.
+    `reports/runs/<run_id>/` and commits them together with the run's `EXPERIMENTS.md` row. A run
+    that writes an experiment-specific summary commits that file too: `probe_summary.json`
+    (`scripts/probe_metadata.py`), `counterfactual_summary.json` (`scripts/counterfactual_eval.py`)
+    or `audit_summary.json` (`scripts/audit_jpeg_tables.py`).
   - `checkpoint.pt` and `predictions.csv` are never committed. A run meant to be kept is saved as a
     Kaggle notebook version, so `/kaggle/working` persists.
   - When `wandb.enabled` is true, the resolved config and the non-null metrics are also logged to
@@ -307,7 +310,7 @@ Enforcement:
 | `seed` | integer | no | ≥ 0; the same value as in the config |
 | `split_name` | string | no | Matches a file in `configs/splits/` |
 | `split_sha256` | string | no | SHA-256 hex of the split assignment file `configs/splits/split_assignment.csv` (`data.split_assignment_path`). That file is the split's identity (§2) |
-| `manifest_sha256` | object | no | Map from the file name of each manifest the run reads (`manifest_train.csv`, `manifest_val.csv`) to the SHA-256 hex of its bytes. Catches a changed manifest even when `git_sha` and `split_sha256` are unchanged |
+| `manifest_sha256` | object | no | Map from the file name of each manifest the run reads to the SHA-256 hex of its bytes. A run that trains or evaluates a model reads `manifest_train.csv` and `manifest_val.csv`; the full-split JPEG audit (`scripts/audit_jpeg_tables.py`) also reads `manifest_test.csv`, headers only, and hashes all three. Catches a changed manifest even when `git_sha` and `split_sha256` are unchanged |
 | `environment.python` | string | no | Python version |
 | `environment.torch` | string | no | `torch.__version__` |
 | `environment.cuda` | string | yes | CUDA version torch was built with; null on CPU-only torch builds |
@@ -319,8 +322,8 @@ Enforcement:
 | `environment.deterministic_algorithms` | string | no | Description of the determinism settings applied by `antispoof.training.reproducibility.seed_everything` |
 | `status` | string | no | `running`, `completed`, `failed` or `aborted`. `running` is written at launch; the other values when the run ends |
 | `error` | string | no | Present only when `status` is `failed` or `aborted`. `<ExceptionType>: <message>` of the exception that ended the run |
-| `data_subsets` | object | no | Keys `train` and `val`, each `{rows, subjects, live, spoof}` as integers: counts of the subset the run actually used |
-| `training_epochs` | array[object] | yes | Present only when `status` is `completed`; null for runs that do not train (the metadata probe). One item per epoch: `{steps: integer, images: integer, mean_loss: number, wall_time_s: number, images_per_s: number}`. Wall time includes data loading |
+| `data_subsets` | object | no | One key per split the run read, each `{rows, subjects, live, spoof}` as integers: counts of the subset the run actually used. The full-split JPEG audit draws no subset, so its values are the full manifest counts of each split it read |
+| `training_epochs` | array[object] | yes | Present only when `status` is `completed`; null for runs that do not train (the metadata probe, the counterfactual evaluation, the JPEG audit). One item per epoch: `{steps: integer, images: integer, mean_loss: number, wall_time_s: number, images_per_s: number}`. Wall time includes data loading |
 | `metrics_arm` | string | no | Present only when a run evaluates another run's checkpoint under several arms (`scripts/counterfactual_eval.py`). Names the arm whose pooled metrics fill `metrics` (`reencode_live_quality`); every arm's metrics are in `counterfactual_summary.json` |
 | `source_run.run_id` | string | no | Present only when a run evaluates another run's checkpoint (`scripts/counterfactual_eval.py`). `run_id` of the evaluated run (`--run-dir`) |
 | `source_run.config_path` | string | no | Present only with `source_run`. The evaluated run's `config_path`; must be the committed baseline config |
@@ -348,6 +351,10 @@ Enforcement:
 | `notes` | string | yes | Free text |
 
 Metrics are stored as fractions in [0, 1]. Docs and reports display them as percentages.
+
+A run that measures the data rather than a model leaves every `metrics` value null and gets no
+`EXPERIMENTS.md` row. `scripts/audit_jpeg_tables.py` is the only such run today; it prints that fact
+as the last line of its report instead of a ledger row.
 
 The baseline computes pooled rates only. It fills `bpcer`, the four counts, `apcer_pooled` and
 `acer_pooled`, and leaves `apcer_max`, `apcer_per_species`, `acer` and `bpcer_at_apcer_1pct` null.

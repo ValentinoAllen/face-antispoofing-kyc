@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from PIL import Image, ImageFile
+from PIL import Image
 
 from antispoof.data import labels
 from antispoof.data.dataset import ImageLoadError
@@ -35,26 +35,6 @@ def write_jpeg(path: Path, size: tuple[int, int], seed: int, **options: Any) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     noise_image(size, seed).save(path, "JPEG", **options)
     return path
-
-
-@pytest.fixture
-def spy_on_file_loads(monkeypatch: pytest.MonkeyPatch) -> Callable[[], list[str]]:
-    """Return a function that starts recording pixel loads of images opened from files or bytes."""
-
-    def install() -> list[str]:
-        calls: list[str] = []
-        for owner in (Image.Image, ImageFile.ImageFile):
-            original = owner.load
-
-            def spy(self: Image.Image, *args: Any, _original: Any = original, **kwargs: Any) -> Any:
-                if isinstance(self, ImageFile.ImageFile):
-                    calls.append(type(self).__name__)
-                return _original(self, *args, **kwargs)
-
-            monkeypatch.setattr(owner, "load", spy)
-        return calls
-
-    return install
 
 
 @pytest.mark.parametrize("subsampling", [0, 1, 2])

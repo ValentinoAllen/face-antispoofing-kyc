@@ -1,0 +1,22 @@
+# Full-split JPEG quantization-table audit: does the per-class encoding split hold beyond the
+# baseline's subsets? Loaded by antispoof.eval.jpeg_audit.load_audit_config and run by
+# scripts/audit_jpeg_tables.py. Image headers only: no pixel is decoded and no model is built.
+# Data paths come from configs/data.yaml and the script flags. Configs are immutable once a run has
+# cited them: copy this file to change settings.
+
+run:
+  # Copied into the run record. This audit is descriptive: it fixes no decision rule and computes
+  # no PAD metric, so it gets no docs/EXPERIMENTS.md row.
+  hypothesis: "Part 1 of 20260918-131447-counterfactual_jpeg found one quantization table set per class on the baseline's 4,000-row train and 2,000-row val subsets, matching Pillow quality 75 for live and 95 for spoof; this audit measures whether that holds over every row of the train, val and test manifests, and whether the spoof table sets differ by spoof_type."
+  what_changed: "Full-split header-only audit of JPEG quantization tables"
+  notes: "descriptive audit of the data, not a model; headers only, no pixels decoded; reads the test manifest's headers, which does not spend the single test evaluation of docs/RULES.md 3"
+  # Seeds everything for the record's determinism description. The audit draws nothing.
+  seed: 42
+
+audit:
+  # Every manifest is scanned in full; no subset is drawn.
+  splits: [train, val, test]
+  # Log progress after this many scanned rows.
+  progress_every: 50000
+  # Unreadable headers are always counted in full; this caps how many are listed by path.
+  max_listed_failures: 50
