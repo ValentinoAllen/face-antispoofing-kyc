@@ -92,7 +92,8 @@ still an open Week 1 item.
   - A size-only effect: the secondary counterfactual arm changes size and quality together.
   - Whether the class-level differences in JPEG quantization tables and image dimensions come from
     the original CelebA-Spoof release or from this Kaggle mirror.
-  - Pixel-level shortcuts are untested.
+  - Pixel-level shortcuts other than JPEG encoding are untested; JPEG encoding was tested in
+    `20260918-131447-counterfactual_jpeg`.
   - The SCHEMA §1.2 directory-listing checks are still externally measured.
   - Codes on the 2,022 conflicting train rows and on live rows are unmeasured, and val's code
     distribution is not printed.
@@ -755,7 +756,7 @@ still an open Week 1 item.
   row). Until it is, no baseline metric is a model-quality estimate.
   - **Header level (2026-09-16):** from header metadata alone, `20260916-075616-probe_metadata`
     reached pooled val ACER 0.00% (0/1,346, 0/654): a strong header-level shortcut under the
-    pre-registered rule. The three questions below follow from it.
+    pre-registered rule. The five questions below follow from it; one of them is closed.
 - Do the class-level differences in JPEG quantization tables and image dimensions
   (`reports/runs/20260916-075616-probe_metadata/probe_summary.json`) come from the original
   CelebA-Spoof release or from this Kaggle mirror?
