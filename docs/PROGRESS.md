@@ -647,8 +647,22 @@ The EDA notebook is still an open Week 1 item.
 - Do the class-level differences in JPEG quantization tables and image dimensions
   (`reports/runs/20260916-075616-probe_metadata/probe_summary.json`) come from the original
   CelebA-Spoof release or from this Kaggle mirror?
+  - **Quantization tables measured (2026-09-18):** Part 1 of `20260918-131447-counterfactual_jpeg`
+    (headers only, `counterfactual_summary.json`) found one distinct (luma, chroma) table set per
+    class on the baseline's train and val subsets, each an exact match for one Pillow quality.
+    - Live: Pillow quality 75, RGB 4:2:0, luma mean 29.03125, chroma mean 43.4375; 1,321 train and
+      654 val rows.
+    - Spoof: Pillow quality 95, RGB 4:2:0, luma mean 5.765625, chroma mean 8.71875; 2,679 train and
+      1,346 val rows.
+    - Matching was done on Kaggle with Pillow 11.3.0. The origin question stays open.
 - Does the CNN use these header-level traces? The probe shows they are available, not that they are
-  used. The next session tests this.
+  used.
+  - **JPEG-encoding trace (2026-09-18):** `20260918-131447-counterfactual_jpeg` re-encoded only the
+    val attack images at evaluation time. Under the pre-registered rule the test is valid
+    (reencode_same pooled APCER 1.78%, 24/1,346) and shows no evidence of reliance
+    (reencode_live_quality pooled APCER 4.31%, 58/1,346). The secondary arm, which also resizes to
+    a live train-subset size, is partial (8.77%, 118/1,346).
+  - Still open: that arm changes size and quality together, so a size-only effect is not isolated.
 - Pixel-level shortcuts remain untested.
 
 ## Blocked on

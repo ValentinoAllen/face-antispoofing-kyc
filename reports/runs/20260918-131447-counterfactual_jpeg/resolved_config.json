@@ -1,0 +1,48 @@
+{
+  "experiment": {
+    "run": {
+      "hypothesis": "The baseline CNN relies on the JPEG-encoding trace of attack images. Val subset, threshold 0.5, live images unchanged. Validity: reencode_same pooled APCER must be <= 5%, otherwise the test is inconclusive. Then on reencode_live_quality pooled APCER: >= 20% strong reliance; <= 5% no evidence of reliance; otherwise partial. reencode_live_quality_and_size is secondary, same bands.",
+      "what_changed": "Counterfactual eval: attack images re-encoded at evaluation time, no retraining",
+      "notes": "same val subset and threshold as 20260915-153606-baseline; checkpoint from a rerun of configs/baseline.yaml",
+      "seed": 42
+    },
+    "baseline": {
+      "config": "configs/baseline.yaml"
+    },
+    "counterfactual": {
+      "arms": [
+        "identity",
+        "reencode_same",
+        "reencode_live_quality",
+        "reencode_live_quality_and_size"
+      ],
+      "resize_filter": "bicubic"
+    },
+    "eval": {
+      "threshold": 0.5,
+      "threshold_rule": "fixed_config"
+    }
+  },
+  "baseline": {
+    "config_path": "configs/baseline.yaml",
+    "config_hash": "5fbfa7206f31b94dd756a7dba60abab86c5d63e9318a49aa55309d73d72fb655"
+  },
+  "data": {
+    "dataset_root": "/kaggle/input/datasets/attentionlayer241/celeba-spoof-for-face-antispoofing/CelebA_Spoof_/CelebA_Spoof",
+    "metas_dir": "metas",
+    "protocol": "intra_test",
+    "train_label_file": "train_label.json",
+    "test_label_file": "test_label.json",
+    "conflict_policy": "exclude",
+    "excluded_subjects": [
+      "5028",
+      "7332",
+      "9735"
+    ],
+    "manifest_dir": "/kaggle/working/manifests",
+    "split_assignment_path": "configs/splits/split_assignment.csv",
+    "val_fraction": 0.1,
+    "seed": 42,
+    "stratify_bins": 10
+  }
+}
