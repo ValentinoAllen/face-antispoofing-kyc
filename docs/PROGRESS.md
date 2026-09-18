@@ -4,11 +4,11 @@
 
 The baseline training pipeline is committed, with Kaggle smoke runs on 4k/2k subsets whose numbers
 are not a model-quality estimate. On the same subsets, the header-metadata probe
-`20260916-075616-probe_metadata` meets the pre-registered rule for a strong header-level shortcut.
-The counterfactual evaluation `20260918-131447-counterfactual_jpeg` re-encoded only the val attack
-images; under its pre-registered rule it is valid and shows no evidence that the baseline CNN relies
-on the JPEG-encoding trace, while its secondary size-and-quality arm is partial. The EDA notebook is
-still an open Week 1 item.
+`20260916-075616-probe_metadata` meets the pre-registered rule for a strong header-level shortcut,
+and the counterfactual `20260918-131447-counterfactual_jpeg` shows no evidence that the baseline CNN
+relies on the JPEG-encoding trace at evaluation time. This session added the three pieces needed to
+settle the remaining JPEG questions, all of which are **code only: none has run on the real
+dataset**. No run this session produced a metric, so `docs/EXPERIMENTS.md` gained no row.
 - **Code:** `antispoof.data` holds the verified annotation layout and code convention, the config
   loader, the manifest builder, the subject-level split with its invariants and the build
   orchestration. It also holds `ManifestDataset`, `make_subset`, `read_manifest` and the baseline
@@ -30,11 +30,26 @@ still an open Week 1 item.
     (identity, reencode_same, reencode_live_quality, reencode_live_quality_and_size) with only spoof
     rows edited. The run folder's `config_hash` must match `configs/baseline.yaml`; the identity arm
     must reproduce the run's counts and every arm must keep its BPCER, or the run fails.
+  - **New:** `antispoof.eval.jpeg_audit`, `scripts/audit_jpeg_tables.py` and
+    `configs/audit_jpeg.yaml` audit every row of all three manifests from headers only, reusing the
+    Part 1 matcher. They report the distinct table sets per split and per class with row counts and
+    shares, the format/mode/subsampling counts, and a cross-tab of spoof table set against
+    `spoof_type`. Unreadable headers are counted and listed, up to 50, without stopping the run.
+    The run computes no PAD metrics, so its `metrics` stay null and it gets no ledger row.
+  - **New:** `antispoof.data.cache` (contract, reader, `CachedManifestDataset`, `load_cache`),
+    `antispoof.data.cache_build` (builder), `scripts/build_cache.py` and `configs/cache_v1.yaml`
+    write every row at 256 px square, Pillow quality 90 and 4:2:0, with no face crop. The build is
+    idempotent on the source SHA-256, so an interrupted run resumes, and it verifies a seeded sample
+    of 200 cached headers per split against the target table set and size.
+  - **New:** an experiment config may carry an optional `cache` section (`name` and `dir`);
+    `configs/baseline_cache.yaml` is `configs/baseline.yaml` plus that pointer and the owner's
+    pre-registered hypothesis. `scripts/train.py --cache-dir` moves the cache path only. A run
+    refuses a cache whose name, source manifests or row coverage do not match it.
   - Run records carry `manifest_sha256`, `environment.pillow` and `environment.sklearn`;
-    counterfactual records also carry `metrics_arm` and `source_run` (`docs/SCHEMA.md` §3).
-- **Checks:** ruff format, ruff check, mypy (22 source files) and pytest (228 tests, run with the
-  project venv) passed on the content of `9924a87`, locally with Pillow 12.3.0. Before `96723f6`
-  (docs and records only) pytest passed again (228) and ruff and mypy were not rerun.
+    counterfactual records also carry `metrics_arm` and `source_run`, and a cached run carries
+    `cache` (`docs/SCHEMA.md` §3).
+- **Checks:** ruff format (55 files), ruff check, mypy (25 source files) and pytest (302 tests,
+  project venv, Pillow 12.3.0) passed on the content of each of `5efe100`, `fbab7b0` and `308b964`.
 - **Dataset:** the owner's fourth Kaggle build (2026-09-18) printed counts that all appear in
   `docs/SCHEMA.md` §1.2 and §1.1.1, with the per-code tables matching cell by cell. Split: train
   442,859 rows / 7,370 subjects, val 49,308 / 819, test 67,170 / 1,004. The committed
@@ -43,7 +58,7 @@ still an open Week 1 item.
   `manifest_sha256`.
 - **Runs:** `20260915-153606-baseline`, `20260916-075448-baseline`,
   `20260916-075616-probe_metadata`, `20260918-130622-baseline` and
-  `20260918-131447-counterfactual_jpeg` are in `docs/EXPERIMENTS.md`.
+  `20260918-131447-counterfactual_jpeg` are in `docs/EXPERIMENTS.md`. This session added none.
   - Baseline: 1 epoch on a 4,000-image train subset, evaluated on a 2,000-image val subset (654 live,
     1,346 spoof) at a fixed threshold of 0.5. Pooled APCER 1.86% (25/1,346), BPCER 1.53% (10/654),
     pooled ACER 1.69%.
@@ -76,9 +91,8 @@ still an open Week 1 item.
     counterfactual `predictions_<arm>.csv` files stayed on Kaggle.
 - **Run records:** each script writes `<output-dir>/<run_id>/` on Kaggle. The owner copies
   `record.json` and `resolved_config.json` into `reports/runs/<run_id>/` and commits them with the
-  ledger row. `probe_summary.json` (owner decision) and `counterfactual_summary.json` (owner's
-  instruction this session) are committed too, which the `docs/SCHEMA.md` §3 path paragraph and the
-  `docs/EXPERIMENTS.md` workflow do not yet describe.
+  ledger row. `probe_summary.json`, `counterfactual_summary.json` and `audit_summary.json` are
+  committed too, which `docs/SCHEMA.md` §3 now describes.
   Checkpoints and predictions are not committed; a run to be kept is saved as a Kaggle notebook
   version. The split's identity is `split_sha256`; there are no sidecar files.
 - **Environment:** supported Python is 3.11–3.12. Kaggle, with its preinstalled torch and timm via
@@ -89,7 +103,10 @@ still an open Week 1 item.
 - **Not implemented:** BPCER@APCER=1%, per-species APCER, a threshold fitted on val, face crop,
   augmentation, any test evaluation, and `validate_attack_codes` violation counts in the build.
 - **Unverified:**
-  - A size-only effect: the secondary counterfactual arm changes size and quality together.
+  - Everything added this session has run only on synthetic images. The audit has not scanned the
+    559,337 real rows, no real cache exists, and no model has trained on one.
+  - A size-only effect: the secondary counterfactual arm changes size and quality together, and the
+    cached baseline normalizes size and quality together too.
   - Whether the class-level differences in JPEG quantization tables and image dimensions come from
     the original CelebA-Spoof release or from this Kaggle mirror.
   - Pixel-level shortcuts other than JPEG encoding are untested; JPEG encoding was tested in
@@ -99,9 +116,10 @@ still an open Week 1 item.
     distribution is not printed.
 - **Known risks:** covariate shift between the train and test attack populations (`docs/PRD.md`
   §8). Val and test ACER are not directly comparable, and per-condition test cells are small.
-- **Next step:** decide whether to isolate the size component and how to test pixel-level
-  shortcuts. Then design the Week 2 evaluation: a val-fitted threshold, BPCER@APCER=1%, per-species
-  APCER and the PRD §8 consequences (a)–(c).
+- **Next step:** run the four Kaggle commands in order — the full-split audit, the cache build, an
+  uncached baseline rerun at this commit, and the cached baseline — then compare the cached run's
+  pooled val APCER against the 1.86% uncached figure under the pre-registered rule in
+  `configs/baseline_cache.yaml`.
 
 ## Milestones
 
@@ -132,6 +150,104 @@ still an open Week 1 item.
   write-up
 
 ## Session log
+
+### 2026-09-18: Full-split table audit, normalized cache, and cache-aware training
+
+**Done**
+- `5efe100`: full-split JPEG quantization-table audit.
+  - `src/antispoof/eval/jpeg_audit.py`, `scripts/audit_jpeg_tables.py` (the requested flags) and
+    `configs/audit_jpeg.yaml`. The Part 1 matcher in `antispoof.eval.jpeg_tables` is reused
+    unchanged; `class_encodings` is deliberately not called, because a full-split audit must not
+    assume one table set per class.
+  - Reports per split and per class: distinct table sets with their match (or "no standard match"),
+    row counts and shares; format, mode and subsampling counts; and a cross-tab of spoof table set
+    against `spoof_type`. Unreadable headers are counted in full and listed by path up to
+    `max_listed_failures` (50), and do not stop the run. Progress is logged every 50,000 rows.
+  - Equal `JpegTables` are interned, so the scan holds one object per distinct table set rather than
+    one per row. A test asserts the object identity; without it the frame would hold on the order of
+    10^8 integers for 559,337 rows.
+  - `RecordHeader` gains `manifest_splits` and `manifest_paths` a `splits` argument, both defaulting
+    to train and val, so existing records' `manifest_sha256` is unchanged while the audit hashes all
+    three manifests. `docs/SCHEMA.md` §3 rows updated to match, and its path paragraph now names the
+    three committed summary files (a gap open since 2026-09-16).
+  - The module and script docstrings state why reading the test manifest does not spend the single
+    test evaluation of `docs/RULES.md` §3: headers only, no pixel decoded, no model, no
+    model-selection signal. The report's last line says the run gets no ledger row.
+- `fbab7b0`: normalized image cache builder.
+  - `src/antispoof/data/cache.py` (contract and reader), `src/antispoof/data/cache_build.py`
+    (builder), `scripts/build_cache.py` (the requested flags) and `configs/cache_v1.yaml`
+    (256 px square, quality 90, 4:2:0, bicubic, `face_crop: false`).
+  - Owner decision this session: the cached path mirrors the source layout,
+    `<split>/<subject_id>/<live|spoof>/<filename>`, rather than the three-level path in the brief,
+    which could collide when a subject has a live and a spoof file with the same basename. The
+    collision check over the manifest alone is kept as a cheap invariant and now also catches a
+    repeated `image_path`.
+  - Idempotent on the source SHA-256, with the cache manifest flushed as the build proceeds, so an
+    interrupted build resumes. A truncated last line is tolerated on the way back in.
+  - Verifies a seeded sample per split by comparing the cached header's whole table set with the one
+    Pillow writes at the target quality, which covers subsampling too, and the size.
+  - `cache_summary.json` records the settings, the layout, the source manifests' SHA-256s and the
+    per-split counts. `docs/SCHEMA.md` gains §1.5 for the cache contract.
+  - Also made the manifest dtypes public and moved `load_manifests` next to `manifest_paths`, so the
+    builder reads manifests without importing an eval module.
+- `308b964`: cache-aware training.
+  - `TrainConfig` gains an optional `cache` section (`name`, `dir`). It is left out of the resolved
+    config entirely when unset, so an uncached config resolves, and hashes, exactly as before.
+  - Owner decision this session: the cache's identity lives in the config, not only its path. The
+    record stores `cache.name`, the resolved directory, the settings read from `cache_summary.json`
+    and the SHA-256 of that file and of each cache manifest. `scripts/train.py --cache-dir` moves
+    the path only.
+  - A run refuses a cache whose name, source-manifest SHA-256s or row coverage disagree with it,
+    before the run directory is created, so a `--limit`ed or interrupted cache cannot silently train
+    on fewer images than the record claims.
+  - `ManifestDataset` gains a `load_image` hook; `CachedManifestDataset` and the counterfactual
+    dataset now each override one method instead of repeating the path resolution.
+  - `configs/baseline_cache.yaml`: `configs/baseline.yaml` plus the cache pointer, with hypothesis,
+    what_changed and notes verbatim from the owner. Checked in a test that everything from `model:`
+    down is identical to `configs/baseline.yaml`.
+- Checks before each commit: `ruff format --check` (55 files), `ruff check`, mypy (25 source files)
+  and pytest — 250 tests at `5efe100`, 280 at `fbab7b0`, 302 at `308b964`, all passing in the
+  project venv with Pillow 12.3.0.
+- Two bugs were found by the new tests before the cache commit and fixed: `check_no_collisions`
+  ignored a repeated `image_path`, and `read_cached_rows` kept a truncated trailing row with empty
+  values instead of dropping it.
+- Script smoke runs in a throwaway git repo under the scratchpad, on synthetic noise JPEGs (72 train
+  / 24 val / 24 test rows, live q75 and spoof q95/q85): all four scripts ran end to end, the cache
+  build's rerun skipped every row, and the cached run's record carried the full `cache` block. The
+  metrics are synthetic and meaningless, and nothing from them is recorded here.
+
+**Broke / not verified**
+- Nothing added this session has run on the real dataset. The audit has not scanned the 559,337
+  rows, no real cache exists, and no model has trained on one. There is no new run record and no new
+  `docs/EXPERIMENTS.md` row.
+- The cached baseline normalizes size and quality together: cached training resizes to 256 and the
+  model transform then resizes 256 to 224, where the uncached run goes straight to 224. A rise in
+  pooled APCER therefore cannot be attributed to quality alone. This is the same confound already
+  noted for the counterfactual's secondary arm; the hypothesis text is the owner's and was not
+  changed.
+- The full-manifest scan's memory behaviour is argued from the interning test, not measured on
+  559,337 rows. Wall time for the real cache build (492,167 images) is unknown.
+- A first `uv sync` failed on a matplotlib download with a 30 s HTTP timeout; it succeeded with
+  `UV_HTTP_TIMEOUT=300`.
+- The first smoke attempt used a fixture whose train and test subject ids collided, and a cache
+  build was run without `--dataset-root`. Both were operator errors in the throwaway copy, not code
+  faults; the second exercised the builder's failure tolerance, which recorded 96 unreadable sources
+  and did not crash.
+- The no-pixel-decode spy test for the audit ran only locally with Pillow 12.3.0. Kaggle runs with
+  Pillow 11.3.0.
+- The commits are local only: the owner asked for the push.
+
+**Next**
+- Run the four Kaggle commands in order: the full-split audit, the cache build, an uncached baseline
+  rerun at this commit, and the cached baseline. Then apply the pre-registered rule in
+  `configs/baseline_cache.yaml` to the cached run's pooled val APCER against 1.86%.
+- The cache build is long and resumable: rerunning the same command after an interruption resumes.
+- When reading the cached result, keep the size-and-quality confound above in the ledger notes.
+- Week 2 evaluation design: a val-fitted threshold, BPCER@APCER=1%, per-species APCER and the PRD
+  §8 consequences (a)-(c). The audit's `spoof_type` cross-tab is the input to the per-species work.
+- Code session: make the manifest build report `validate_attack_codes` violation counts.
+- Widen `requires-python` in `pyproject.toml` to include 3.12.
+- Set the PRD targets before the first full-train run. Write the EDA notebook.
 
 ### 2026-09-18: JPEG quantization audit and counterfactual re-encoding evaluation
 
@@ -770,6 +886,9 @@ still an open Week 1 item.
     - Matching was done on Kaggle with Pillow 11.3.0. The origin question stays open.
 - Does the q75/q95 split hold beyond these subsets, including the test split? Only 6,000 rows (the
   baseline's 4,000-row train and 2,000-row val subsets) were audited.
+  - **Tooling exists (2026-09-18, `5efe100`), not yet run:** `scripts/audit_jpeg_tables.py` with
+    `configs/audit_jpeg.yaml` scans all 559,337 rows from headers only and also cross-tabulates the
+    spoof table sets against `spoof_type`. Nothing is answered until it runs on Kaggle.
 - ~~Does the CNN use these header-level traces? The probe shows they are available, not that they
   are used.~~
   **Answered (2026-09-18):** `20260918-131447-counterfactual_jpeg` re-encoded only the val attack
@@ -781,6 +900,14 @@ still an open Week 1 item.
   together, with no size-only control, so its 8.77% pooled APCER (118/1,346) cannot be attributed
   to either.
 - Pixel-level shortcuts other than JPEG encoding remain untested.
+- Does training on the normalized cache remove the header-level class signature? The pre-registered
+  rule is in `configs/baseline_cache.yaml`: on val pooled APCER against the 1.86% uncached baseline,
+  a rise to >= 3x means the uncached run depended substantially on capture-source cues, <= 1.5x
+  means it did not, in between is partial. BPCER is reported but not part of the rule.
+  - The tooling exists (2026-09-18, `fbab7b0` and `308b964`) but has run on synthetic images only.
+  - **Caveat to record with the result:** cache v1 normalizes size and quality together (256 px
+    square, then the model transform resizes to 224), so a rise cannot be attributed to quality
+    alone. Isolating the size component still needs its own arm or a second cache.
 
 ## Blocked on
 
