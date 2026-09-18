@@ -215,6 +215,57 @@ Manifest-level invariants:
   the dataset root, which suggests per-image `{image_id}_BB.txt` sidecar files. This is unverified.
 - Bounding-box columns will be added in manifest v2, once the format is confirmed.
 
+### 1.5 Normalized image cache
+
+- **Path:** a cache root outside the repository, e.g. `/kaggle/working/cache`. Like the manifests it
+  is large, gitignored and rebuilt on Kaggle (ADR-008).
+- **Produced by:** `scripts/build_cache.py` → `antispoof.data.cache_build.build_cache`, configured by
+  `configs/cache_v1.yaml`.
+- **Read by:** `antispoof.data.cache`, which is the contract below and holds no encoding logic.
+- **Purpose:** every row, live or spoof, is stored at one size, one JPEG quality and one
+  subsampling, so the header-level class signature measured in `20260916-075616-probe_metadata` is
+  not in the pixels a cached run reads.
+
+Cached images mirror the source `image_path` layout (§1.3), with the **manifest** split as the first
+component, so a live and a spoof file that share a basename cannot collide:
+
+```
+<cache-root>/<split>/<subject_id>/<live|spoof>/<filename>
+```
+
+The file always holds JPEG bytes, under the source filename. The build counts any cached file whose
+source suffix is not `.jpg` or `.jpeg` and reports the count.
+
+**`cache_manifest_<split>.csv`** — UTF-8 CSV with a header row, one row per successfully cached
+image, in manifest order. Its first nine columns are manifest v1 (§1.3) copied unchanged, then:
+
+| Column | dtype | Nullable | Constraint |
+|---|---|---|---|
+| `cached_path` | string | no | POSIX path of the cached image, relative to the cache root, so a cache can be moved without rewriting its manifests |
+| `source_sha256` | string | no | SHA-256 hex of the source image's bytes. A rerun skips a row whose cached file exists and whose source still hashes to this value, which is what makes the build resumable |
+
+A row whose source cannot be read is counted and listed in `cache_summary.json` and has no row here,
+so a cache manifest can be shorter than its source manifest.
+
+**`cache_summary.json`** — one JSON object at the cache root.
+
+| Field | JSON type | Nullable | Constraint |
+|---|---|---|---|
+| `name` | string | no | `cache.name`; the cache's identity, stored in every run record that reads it |
+| `created_at` | string | no | ISO 8601 UTC |
+| `config_path` | string | no | Repo-relative path under `configs/` |
+| `config_hash` | string | no | SHA-256 hex of the resolved `{experiment, data}` config, as in §3 |
+| `git_sha`, `git_dirty` | string, boolean | no | Git state of the build |
+| `environment.python`, `environment.platform`, `environment.pillow` | string | no | Pillow decodes and re-encodes every image; no model is built, so there is no torch entry |
+| `settings` | object | no | The resolved `cache:` section: `name`, `target_size`, `quality`, `subsampling`, `resample_filter`, `face_crop` |
+| `layout` | string | no | States that the cached path mirrors the source `image_path` |
+| `cached_path` | string | no | States that `cached_path` is POSIX and relative to the cache root |
+| `source_manifest_sha256` | object | no | Map from each source manifest's file name to the SHA-256 hex of its bytes. A run refuses a cache whose values differ from the manifests it reads |
+| `limit` | integer | yes | `--limit`, or null. A cache built with a limit covers only part of each split, and a run that needs a missing row fails |
+| `splits.<split>` | object | no | `{rows, cached, skipped, failed, bytes, non_jpeg_suffix, wall_time_s, cache_manifest, cache_manifest_sha256, verification}` |
+| `splits.<split>.verification` | object | no | `{sample_rows, checked, seed}`: a seeded sample of cached files whose headers were checked against the target tables and size. A mismatch fails the build |
+| `failures` | array[object] | no | One `{image_path, split, error}` per source image that could not be read |
+
 ## 2. Split assignment file
 
 - **Path:** `configs/splits/split_assignment.csv`.

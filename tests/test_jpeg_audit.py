@@ -21,7 +21,11 @@ from antispoof.data.config import DataConfig
 from antispoof.data.manifest import build_manifest
 from antispoof.eval import jpeg_audit
 from antispoof.eval.jpeg_tables import reference_tables
-from antispoof.training.run import RECORD_FILENAME, RESOLVED_CONFIG_FILENAME
+from antispoof.training.run import (
+    RECORD_FILENAME,
+    RESOLVED_CONFIG_FILENAME,
+    load_manifests,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_CONFIG = REPO_ROOT / "configs" / "audit_jpeg.yaml"
@@ -261,7 +265,7 @@ def test_failure_list_is_capped_while_the_count_is_not(
 def test_equal_table_sets_are_interned_to_one_object(
     audit_data: DataConfig, tmp_path: Path
 ) -> None:
-    manifests = jpeg_audit.load_manifests(labels.SPLITS, audit_data)
+    manifests = load_manifests(labels.SPLITS, audit_data)
     headers, failures = jpeg_audit.read_audit_headers(manifests, audit_data.dataset_root, 5)
     assert not failures
     distinct = {id(tables) for tables in headers["tables"]}

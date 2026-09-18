@@ -136,6 +136,39 @@ def manifest_paths(
     }
 
 
+def load_manifests(splits: Sequence[str], data_config: DataConfig) -> dict[str, pd.DataFrame]:
+    """Read every row of the manifest of each split. No subsetting is applied.
+
+    Args:
+        splits: Splits to read, in reading order.
+        data_config: Holds the manifest directory.
+
+    Returns:
+        ``{split: manifest}``.
+
+    Raises:
+        ManifestError: If a manifest's columns do not match the contract.
+        ValueError: If a manifest holds rows of another split.
+    """
+    manifests: dict[str, pd.DataFrame] = {}
+    for split, path in manifest_paths(data_config, splits).items():
+        manifest = read_manifest(path)
+        wrong_split = manifest["split"] != split
+        if wrong_split.any():
+            raise ValueError(f"{path}: {int(wrong_split.sum())} rows are not in split {split!r}.")
+        manifests[split] = manifest
+        summary = summarize_split(manifest)
+        logger.info(
+            "%s manifest: %d rows, %d subjects (live %d, spoof %d).",
+            split,
+            summary.rows,
+            summary.subjects,
+            summary.live,
+            summary.spoof,
+        )
+    return manifests
+
+
 def load_subsets(train_config: TrainConfig, data_config: DataConfig) -> dict[str, pd.DataFrame]:
     """Read the train and val manifests, draw the configured subsets, and validate them.
 

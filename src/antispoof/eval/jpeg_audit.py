@@ -23,7 +23,7 @@ gets no ``docs/EXPERIMENTS.md`` row.
 
 import logging
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,7 +38,6 @@ from antispoof.data import labels
 from antispoof.data.build import summarize_split
 from antispoof.data.config import DataConfig
 from antispoof.data.dataset import ImageLoadError
-from antispoof.data.manifest import read_manifest
 from antispoof.eval.jpeg_tables import CLASS_NAME, JpegTables, audit_quantization, jpeg_tables
 from antispoof.eval.metadata_probe import CLASS_NAMES, SUBSAMPLING_NAMES, SUBSAMPLING_OTHER
 from antispoof.training import reproducibility
@@ -52,7 +51,7 @@ from antispoof.training.run import (
     RecordHeader,
     build_record,
     close_failed_record,
-    manifest_paths,
+    load_manifests,
     write_json,
 )
 
@@ -215,39 +214,6 @@ def validate_audit_config(config: AuditConfig) -> None:
     problems = [message for passed, message in checks if not passed]
     if problems:
         raise AuditConfigError("Invalid audit config: " + "; ".join(problems) + ".")
-
-
-def load_manifests(splits: Sequence[str], data_config: DataConfig) -> dict[str, pd.DataFrame]:
-    """Read every row of the manifest of each split. No subsetting is applied.
-
-    Args:
-        splits: Splits to read, in reading order.
-        data_config: Holds the manifest directory.
-
-    Returns:
-        ``{split: manifest}``.
-
-    Raises:
-        ManifestError: If a manifest's columns do not match the contract.
-        ValueError: If a manifest holds rows of another split.
-    """
-    manifests: dict[str, pd.DataFrame] = {}
-    for split, path in manifest_paths(data_config, splits).items():
-        manifest = read_manifest(path)
-        wrong_split = manifest["split"] != split
-        if wrong_split.any():
-            raise ValueError(f"{path}: {int(wrong_split.sum())} rows are not in split {split!r}.")
-        manifests[split] = manifest
-        summary = summarize_split(manifest)
-        logger.info(
-            "%s manifest: %d rows, %d subjects (live %d, spoof %d).",
-            split,
-            summary.rows,
-            summary.subjects,
-            summary.live,
-            summary.spoof,
-        )
-    return manifests
 
 
 def read_audit_headers(

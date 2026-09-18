@@ -28,7 +28,7 @@ MANIFEST_COLUMNS = (
 ATTACK_CODE_COLUMNS = ("spoof_type", "illumination", "environment")
 """Manifest columns holding the 1-indexed codes of ``labels.ATTACK_CODE_INDICES``."""
 
-_DTYPES = {
+MANIFEST_DTYPES = {
     "image_path": str,
     "subject_id": str,
     "split": str,
@@ -39,6 +39,7 @@ _DTYPES = {
     "path_kind": str,
     "conflict": bool,
 }
+"""Pandas dtype of each manifest column (``docs/SCHEMA.md`` §1.3)."""
 
 _PARTS_AFTER_SPLIT = 3
 """Path components after the split directory: subject id, path kind, file name."""
@@ -117,7 +118,7 @@ def read_manifest(path: Path) -> pd.DataFrame:
     header = pd.read_csv(path, nrows=0).columns
     if tuple(header) != MANIFEST_COLUMNS:
         raise ManifestError(f"{path}: expected columns {MANIFEST_COLUMNS}, got {tuple(header)}.")
-    return pd.read_csv(path, dtype=_DTYPES, keep_default_na=False)
+    return pd.read_csv(path, dtype=MANIFEST_DTYPES, keep_default_na=False)
 
 
 def parse_image_path(image_path: str) -> ParsedPath:
@@ -220,7 +221,7 @@ def _raw_frame(label_vectors: Mapping[str, Sequence[int]], expected_split: str) 
         raise ManifestError(f"Label mapping for split {expected_split!r} is empty.")
     rows = [_manifest_row(path, vector, expected_split) for path, vector in label_vectors.items()]
     frame = pd.DataFrame.from_records(rows, columns=list(MANIFEST_COLUMNS))
-    return frame.astype(_DTYPES)
+    return frame.astype(MANIFEST_DTYPES)
 
 
 def _apply_conflict_policy(raw: pd.DataFrame, conflict_policy: str) -> pd.DataFrame:

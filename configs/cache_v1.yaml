@@ -1,0 +1,31 @@
+# Normalized image cache v1: one size, one JPEG quality and one subsampling for every row, so the
+# header-level class signature found by 20260916-075616-probe_metadata is gone from the data.
+# Loaded by antispoof.data.cache_build.load_cache_config and run by scripts/build_cache.py.
+# Data paths come from configs/data.yaml and the script flags. Configs are immutable once a run has
+# cited them: copy this file to change settings.
+
+cache:
+  # The cache's identity. Every run record that reads this cache stores it.
+  name: cache_v1
+  # Side length of the square the whole image is resized to, in pixels. Larger than the model's
+  # 224 (configs/baseline.yaml model.input_size) so a face crop stays possible later.
+  target_size: 256
+  # Pillow JPEG quality, applied to every row regardless of class.
+  quality: 90
+  # One of: 4:4:4 | 4:2:2 | 4:2:0.
+  subsampling: "4:2:0"
+  # PIL resampling filter for the resize.
+  resample_filter: bicubic
+  # No face crop in v1: the bounding-box format is still an open question (docs/SCHEMA.md 1.4).
+  # Named here rather than left implied, so a cached run records what it did not do.
+  face_crop: false
+
+verify:
+  # Cached files per split whose header must report the target quality, subsampling and size.
+  sample_rows: 200
+  # Seeds the draw of that sample.
+  seed: 42
+
+progress:
+  # Log progress and flush the cache manifest after this many rows.
+  every: 50000
