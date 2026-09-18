@@ -206,6 +206,12 @@ still an open Week 1 item.
 **Next**
 - Decide whether to isolate the size component, for example an arm that resizes without changing
   quality.
+- Methodology: the <= 5% band was set in absolute terms while baseline pooled APCER is 1.86%, so a
+  2.3x rise in accepted attacks (25 to 58, identity to reencode_live_quality) still landed inside
+  it. This is a post-hoc observation, not a verdict. Future counterfactual rules pre-register a
+  relative effect and a paired test over the same rows, not only absolute bands.
+- Never edit a config that a recorded run cites (`docs/RULES.md` §2); a new arm means a new config
+  file.
 - Test pixel-level shortcuts; find out whether the table and dimension differences come from the
   original CelebA-Spoof release or from this Kaggle mirror.
 - Describe `probe_summary.json` and `counterfactual_summary.json` in the `docs/SCHEMA.md` §3 path
@@ -761,15 +767,19 @@ still an open Week 1 item.
     - Spoof: Pillow quality 95, RGB 4:2:0, luma mean 5.765625, chroma mean 8.71875; 2,679 train and
       1,346 val rows.
     - Matching was done on Kaggle with Pillow 11.3.0. The origin question stays open.
-- Does the CNN use these header-level traces? The probe shows they are available, not that they are
-  used.
-  - **JPEG-encoding trace (2026-09-18):** `20260918-131447-counterfactual_jpeg` re-encoded only the
-    val attack images at evaluation time. Under the pre-registered rule the test is valid
-    (reencode_same pooled APCER 1.78%, 24/1,346) and shows no evidence of reliance
-    (reencode_live_quality pooled APCER 4.31%, 58/1,346). The secondary arm, which also resizes to
-    a live train-subset size, is partial (8.77%, 118/1,346).
-  - Still open: that arm changes size and quality together, so a size-only effect is not isolated.
-- Pixel-level shortcuts remain untested.
+- Does the q75/q95 split hold beyond these subsets, including the test split? Only 6,000 rows (the
+  baseline's 4,000-row train and 2,000-row val subsets) were audited.
+- ~~Does the CNN use these header-level traces? The probe shows they are available, not that they
+  are used.~~
+  **Answered (2026-09-18):** `20260918-131447-counterfactual_jpeg` re-encoded only the val attack
+  images at evaluation time. Under the pre-registered rule the test is valid (reencode_same pooled
+  APCER 1.78%, 24/1,346) and shows no evidence of reliance (reencode_live_quality pooled APCER
+  4.31%, 58/1,346). The secondary arm, which also resizes to a live train-subset size, is partial
+  (8.77%, 118/1,346).
+- The secondary counterfactual arm (reencode_live_quality_and_size) changes size and quality
+  together, with no size-only control, so its 8.77% pooled APCER (118/1,346) cannot be attributed
+  to either.
+- Pixel-level shortcuts other than JPEG encoding remain untested.
 
 ## Blocked on
 
