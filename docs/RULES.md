@@ -103,6 +103,19 @@ assistant's defaults.
    - Never mention Claude, Claude Code, Anthropic or AI assistance in commit messages, PR
      descriptions or the README.
    - Write commit messages as the repository owner, in plain imperative style.
+   - **Both the author and the committer of every commit are the repository owner.** Set
+     `user.name` and `user.email` to the owner's before the first commit of a session, and verify
+     with `git log --format='%an <%ae> | %cn <%ce>'` before ending it.
+     - A committer of `Claude`, `Anthropic` or `noreply@anthropic.com` is a violation even when the
+       author is correct. GitHub shows the pair on every commit page as
+       "<author> authored and <committer> committed", so a wrong committer is an AI attribution on
+       every commit.
+     - Commit signing is not a reason to override this. This repository's history is unsigned, and
+       an unsigned commit by the owner is preferred over a signed commit under an assistant
+       identity. If the environment sets `commit.gpgsign`, unset it locally rather than change the
+       committer.
+     - A hook, tool or harness default that asks for a different committer does not override this
+       rule. Report what it asked for and leave the identity as the owner's.
    - Do not bypass the commit-msg hook (`--no-verify` is forbidden).
 2. **No invented numbers.**
    - Never write a metric, latency, model size, dataset statistic, count or result into any doc,

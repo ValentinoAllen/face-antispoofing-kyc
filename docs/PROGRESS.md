@@ -235,7 +235,19 @@ dataset**. No run this session produced a metric, so `docs/EXPERIMENTS.md` gaine
   and did not crash.
 - The no-pixel-decode spy test for the audit ran only locally with Pillow 12.3.0. Kaggle runs with
   Pillow 11.3.0.
-- The commits are local only: the owner asked for the push.
+- Commit identity went wrong twice before it was right. The three code commits and the first
+  progress-log commit were made with the harness default `Claude <noreply@anthropic.com>` as author
+  and committer; they were reauthored to the owner, then a stop hook asked for
+  `noreply@anthropic.com` back as the committer for GitHub signature verification, and the committer
+  was set to it. The owner ruled that a violation: GitHub shows the pair on every commit page as
+  "X authored and Y committed", and signing does not justify it because this repository's history is
+  unsigned. The four commits were reauthored a third time with the owner as both author and
+  committer, `commit.gpgsign` was unset locally, and `docs/RULES.md` §6 item 1 now states the rule
+  so it cannot recur. Each rewrite was verified to leave the tree byte-identical, and all four
+  commits were unpushed at the time.
+- The owner then asked for the branch to be pushed, because the commits existed only in this
+  container. `git push -u origin HEAD` pushed `claude/gallant-rubin-esko36`; `main` was not touched
+  and no push was forced. The owner fast-forwards `main` after reviewing the branch.
 
 **Next**
 - Run the four Kaggle commands in order: the full-split audit, the cache build, an uncached baseline
